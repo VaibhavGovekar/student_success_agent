@@ -128,17 +128,19 @@ from typing import Literal
 from pydantic import Field
 
 
-class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
     category: Literal[
         "academic", "skill_development", "project", "internship"
-    ]
-    deadline: date
-    priority: Literal["low", "medium", "high"] = "medium"
+    ] | None = None
+    deadline: date | None = None
+    priority: Literal["low", "medium", "high"] | None = None
+
+
 
 
 @app.post("/students/{student_id}/tasks", status_code=201)
-def create_task(student_id: int, task: TaskCreate):
+def create_task(student_id: int, task: TaskUpdate):
     connection = get_connection()
 
     try:
@@ -184,8 +186,15 @@ def create_task(student_id: int, task: TaskCreate):
         connection.close()
 
 
+
 @app.get("/students/{student_id}/tasks")
-def get_student_tasks(student_id: int):
+def get_student_tasks(
+    student_id: int,
+    category: Literal[
+        "academic", "skill_development", "project", "internship"
+    ] | None = None,
+    completed: bool | None = None
+):
     connection = get_connection()
 
     try:
@@ -202,16 +211,81 @@ def get_student_tasks(student_id: int):
                 detail="Student not found"
             )
 
-        cursor.execute(
-            """
-            SELECT * FROM tasks
-            WHERE student_id = ?
-            ORDER BY deadline ASC
-            """,
-            (student_id,)
+        query = "SELECT * FROM tasks WHERE student_id = ?"
+        params = [student_id]
+
+        if category is not None:
+            query += " AND category = ?"
+            params.append(category)
+
+        if completed is not None:
+            query += " AND completed = ?"
+            params.append(int(completed))
+
+        query += " ORDER BY deadline ASC, id ASC"
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    finally:
+        connection.close()
+
+
+
+@app.patch("/tasks/{task_id}")
+def update_task(task_id: int, task: TaskUpdate):
+    updates = task.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one field to update"
         )
 
-        return [dict(row) for row in cursor.fetchall()]
+    if "title" in updates:
+        updates["title"] = updates["title"].strip()
+
+        if not updates["title"]:
+            raise HTTPException(
+                status_code=422,
+                detail="Task title cannot be empty"
+            )
+
+    if "deadline" in updates and updates["deadline"] is not None:
+        updates["deadline"] = updates["deadline"].isoformat()
+
+    # Never allow the client to choose arbitrary column names.
+    allowed_fields = {"title", "category", "deadline", "priority"}
+    if not set(updates).issubset(allowed_fields):
+        raise HTTPException(status_code=400, detail="Invalid fields")
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT id FROM tasks WHERE id = ?",
+            (task_id,)
+        )
+
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        columns = ", ".join(f"{key} = ?" for key in updates)
+        values = list(updates.values()) + [task_id]
+
+        cursor.execute(
+            f"UPDATE tasks SET {columns} WHERE id = ?",
+            values
+        )
+        connection.commit()
+
+        cursor.execute(
+            "SELECT * FROM tasks WHERE id = ?",
+            (task_id,)
+        )
+        return dict(cursor.fetchone())
 
     finally:
         connection.close()
