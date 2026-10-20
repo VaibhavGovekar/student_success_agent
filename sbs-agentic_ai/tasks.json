@@ -1,0 +1,28 @@
+
+{
+  "student_id": "STU001",
+  "available_hours_per_day": 3,
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Complete Python assignment",
+      "due_date": "2026-10-20",
+      "duration_hours": 2,
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Study for Java exam",
+      "due_date": "2026-10-22",
+      "duration_hours": 3,
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Finish mathematics notes",
+      "due_date": "2026-10-24",
+      "duration_hours": 1,
+      "status": "completed"
+    }
+  ]
+}
