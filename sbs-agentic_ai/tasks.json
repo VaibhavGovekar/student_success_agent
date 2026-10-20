@@ -13,7 +13,7 @@
     {
       "id": 2,
       "title": "Study for Java exam",
-      "due_date": "2026-10-22",
+      "due_date": "2026-10-20",
       "duration_hours": 3,
       "status": "pending"
     },

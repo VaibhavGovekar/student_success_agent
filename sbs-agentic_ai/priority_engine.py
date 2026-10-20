@@ -77,40 +77,36 @@ def rank_tasks(tasks, today=None):
     return ranked_tasks
 
 
+
+import json
+from pathlib import Path
+
 if __name__ == "__main__":
-    # Sample tasks for testing the priority engine.
-    sample_tasks = [
-        {
-            "id": 1,
-            "title": "Python assignment",
-            "due_date": "2026-10-20",
-            "duration_hours": 2,
-            "status": "pending"
-        },
-        {
-            "id": 2,
-            "title": "Java exam preparation",
-            "due_date": "2026-10-22",
-            "duration_hours": 3,
-            "status": "pending"
-        },
-        {
-            "id": 3,
-            "title": "Mathematics notes",
-            "due_date": "2026-10-24",
-            "duration_hours": 1,
-            "status": "completed"
-        }
-    ]
+    # Load student data from tasks.json
+    data_file = Path(__file__).with_name("tasks.json")
 
-    ranked = rank_tasks(sample_tasks)
+    try:
+        with open(data_file, "r", encoding="utf-8") as file:
+            student_data = json.load(file)
 
-    print("STUDENT SUCCESS AGENT - PRIORITY ENGINE")
-    print("---------------------------------------")
+        tasks = student_data["tasks"]
 
-    for position, task in enumerate(ranked, start=1):
-        print(
-            f"{position}. {task['title']} | "
-            f"Score: {task['priority_score']} | "
-            f"Deadline: {task['due_date']}"
-        )
+        # Rank tasks using the priority engine
+        ranked_tasks = rank_tasks(tasks)
+
+        print("\nSTUDENT TASK PRIORITIES")
+        print("-" * 40)
+        print(f"Student ID: {student_data['student_id']}")
+        print(f"Available hours per day: {student_data['available_hours_per_day']}")
+
+        for task in ranked_tasks:
+            print(f"\nTask: {task['title']}")
+            print(f"Due date: {task['due_date']}")
+            print(f"Duration: {task['duration_hours']} hours")
+            print(f"Priority score: {task['priority_score']}")
+
+    except FileNotFoundError:
+        print("Error: tasks.json was not found.")
+
+    except (json.JSONDecodeError, KeyError) as error:
+        print(f"Error reading student data: {error}")
