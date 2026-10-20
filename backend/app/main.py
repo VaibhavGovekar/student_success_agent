@@ -9,15 +9,15 @@ from app.database import initialize_database, get_connection
 
 
 app = FastAPI(
-    title="Student Success Agent",
-    description="Agentic AI platform for student academic and career management",
-    version="1.1.0",
+    title="Student Success Agent API",
+    description="APIs for student profiles, task management, and smart recommendations.",
+    version="1.2.0",
 )
 
 initialize_database()
 
 
-# -------------------- CONSTANTS --------------------
+# -------------------- MODELS --------------------
 
 TaskCategory = Literal[
     "academic",
@@ -29,34 +29,32 @@ TaskCategory = Literal[
 TaskPriority = Literal["low", "medium", "high"]
 
 
-# -------------------- REQUEST MODELS --------------------
-
 class StudentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     degree: str | None = None
     semester: int | None = Field(default=None, ge=1)
     cgpa: float | None = Field(default=None, ge=0, le=10)
     career_goal: str | None = None
-    available_hours: int | None = Field(default=None, ge=0)
+    available_hours: float | None = Field(default=None, ge=0)
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, value: str) -> str:
+    def validate_name(cls, value):
         value = value.strip()
         if not value:
-            raise ValueError("Student name cannot be empty")
+            raise ValueError("Name cannot be empty")
         return value
 
 
 class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     category: TaskCategory
-    deadline: date
+    deadline: date | None = None
     priority: TaskPriority = "medium"
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, value: str) -> str:
+    def validate_title(cls, value):
         value = value.strip()
         if not value:
             raise ValueError("Task title cannot be empty")
@@ -71,7 +69,7 @@ class TaskUpdate(BaseModel):
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, value: str | None) -> str | None:
+    def validate_title(cls, value):
         if value is not None:
             value = value.strip()
             if not value:
@@ -83,14 +81,11 @@ class TaskUpdate(BaseModel):
 
 @app.get("/")
 def home():
-    return {
-        "message": "Student Success Agent backend is running",
-        "status": "online",
-    }
+    return {"message": "Student Success Agent API is running"}
 
 
 @app.get("/health")
-def health():
+def health_check():
     return {"status": "healthy"}
 
 
@@ -105,7 +100,7 @@ def create_student(student: StudentCreate):
         cursor.execute(
             """
             INSERT INTO students
-            (name, degree, semester, cgpa, career_goal, available_hours)
+                (name, degree, semester, cgpa, career_goal, available_hours)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
@@ -118,8 +113,8 @@ def create_student(student: StudentCreate):
             ),
         )
 
-        student_id = cursor.lastrowid
         connection.commit()
+        student_id = cursor.lastrowid
 
         cursor.execute(
             "SELECT * FROM students WHERE id = ?",
@@ -157,7 +152,10 @@ def get_student(student_id: int):
         student = cursor.fetchone()
 
         if student is None:
-            raise HTTPException(status_code=404, detail="Student not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Student not found",
+            )
 
         return dict(student)
 
@@ -165,7 +163,7 @@ def get_student(student_id: int):
         connection.close()
 
 
-# -------------------- CREATE TASK --------------------
+# -------------------- TASK CREATION --------------------
 
 @app.post("/students/{student_id}/tasks", status_code=201)
 def create_task(student_id: int, task: TaskCreate):
@@ -180,25 +178,30 @@ def create_task(student_id: int, task: TaskCreate):
         )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Student not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Student not found",
+            )
+
+        deadline = task.deadline.isoformat() if task.deadline else None
 
         cursor.execute(
             """
             INSERT INTO tasks
-            (student_id, title, category, deadline, priority)
-            VALUES (?, ?, ?, ?, ?)
+                (student_id, title, category, deadline, priority, completed)
+            VALUES (?, ?, ?, ?, ?, 0)
             """,
             (
                 student_id,
                 task.title,
                 task.category,
-                task.deadline.isoformat(),
+                deadline,
                 task.priority,
             ),
         )
 
-        task_id = cursor.lastrowid
         connection.commit()
+        task_id = cursor.lastrowid
 
         cursor.execute(
             "SELECT * FROM tasks WHERE id = ?",
@@ -231,27 +234,30 @@ def get_student_tasks(
         )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Student not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Student not found",
+            )
 
         query = "SELECT * FROM tasks WHERE student_id = ?"
-        params = [student_id]
+        parameters = [student_id]
 
         if category is not None:
             query += " AND category = ?"
-            params.append(category)
+            parameters.append(category)
 
         if completed is not None:
             query += " AND completed = ?"
-            params.append(int(completed))
+            parameters.append(int(completed))
 
         if priority is not None:
             query += " AND priority = ?"
-            params.append(priority)
+            parameters.append(priority)
 
-        query += " ORDER BY deadline ASC, id ASC LIMIT ?"
-        params.append(limit)
+        query += " ORDER BY id DESC LIMIT ?"
+        parameters.append(limit)
 
-        cursor.execute(query, params)
+        cursor.execute(query, parameters)
         return [dict(row) for row in cursor.fetchall()]
 
     finally:
@@ -261,8 +267,8 @@ def get_student_tasks(
 # -------------------- UPDATE TASK --------------------
 
 @app.patch("/tasks/{task_id}")
-def update_task(task_id: int, task: TaskUpdate):
-    updates = task.model_dump(exclude_unset=True)
+def update_task(task_id: int, task_update: TaskUpdate):
+    updates = task_update.model_dump(exclude_unset=True)
 
     if not updates:
         raise HTTPException(
@@ -270,12 +276,12 @@ def update_task(task_id: int, task: TaskUpdate):
             detail="Provide at least one field to update",
         )
 
-    # Explicit nulls are not valid updates for these fields.
-    if any(value is None for value in updates.values()):
-        raise HTTPException(
-            status_code=422,
-            detail="Updated task fields cannot be null",
-        )
+    for field, value in updates.items():
+        if value is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} cannot be null",
+            )
 
     if "deadline" in updates:
         updates["deadline"] = updates["deadline"].isoformat()
@@ -283,21 +289,28 @@ def update_task(task_id: int, task: TaskUpdate):
     allowed_fields = {"title", "category", "deadline", "priority"}
 
     if not set(updates).issubset(allowed_fields):
-        raise HTTPException(status_code=400, detail="Invalid fields")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid fields",
+        )
 
     connection = get_connection()
 
     try:
         cursor = connection.cursor()
+
         cursor.execute(
             "SELECT id FROM tasks WHERE id = ?",
             (task_id,),
         )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found",
+            )
 
-        columns = ", ".join(f"{key} = ?" for key in updates)
+        columns = ", ".join(f"{field} = ?" for field in updates)
         values = list(updates.values()) + [task_id]
 
         cursor.execute(
@@ -330,7 +343,10 @@ def complete_task(task_id: int):
         )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found",
+            )
 
         cursor.execute(
             "UPDATE tasks SET completed = 1 WHERE id = ?",
@@ -366,7 +382,10 @@ def reopen_task(task_id: int):
         )
 
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found",
+            )
 
         cursor.execute(
             "UPDATE tasks SET completed = 0 WHERE id = ?",
@@ -374,10 +393,14 @@ def reopen_task(task_id: int):
         )
         connection.commit()
 
+        cursor.execute(
+            "SELECT * FROM tasks WHERE id = ?",
+            (task_id,),
+        )
+
         return {
             "message": "Task reopened successfully",
-            "task_id": task_id,
-            "completed": False,
+            "task": dict(cursor.fetchone()),
         }
 
     finally:
@@ -393,14 +416,100 @@ def delete_task(task_id: int):
     try:
         cursor = connection.cursor()
         cursor.execute(
-            "DELETE FROM tasks WHERE id = ?",
+            "SELECT id FROM tasks WHERE id = ?",
             (task_id,),
         )
 
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Task not found")
+        if cursor.fetchone() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found",
+            )
 
+        cursor.execute(
+            "DELETE FROM tasks WHERE id = ?",
+            (task_id,),
+        )
         connection.commit()
+
+    finally:
+        connection.close()
+
+
+# -------------------- SMART TASK RECOMMENDATIONS --------------------
+
+@app.get("/students/{student_id}/recommendations")
+def get_task_recommendations(student_id: int):
+    today = date.today().isoformat()
+
+    priority_rank = {
+        "high": 0,
+        "medium": 1,
+        "low": 2,
+    }
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            "SELECT id FROM students WHERE id = ?",
+            (student_id,),
+        )
+
+        if cursor.fetchone() is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Student not found",
+            )
+
+        cursor.execute(
+            """
+            SELECT id, student_id, title, category,
+                   deadline, priority, completed
+            FROM tasks
+            WHERE student_id = ? AND completed = 0
+            """,
+            (student_id,),
+        )
+
+        tasks = [dict(row) for row in cursor.fetchall()]
+
+        def task_sort_key(task):
+            deadline = task["deadline"] or "9999-12-31"
+            is_overdue = deadline < today
+
+            return (
+                0 if is_overdue else 1,
+                deadline,
+                priority_rank.get(task["priority"], 3),
+            )
+
+        tasks.sort(key=task_sort_key)
+
+        for task in tasks:
+            deadline = task["deadline"]
+
+            if deadline and deadline < today:
+                reason = f"This task is overdue (deadline: {deadline})."
+            elif deadline == today:
+                reason = "This task is due today."
+            elif deadline:
+                reason = f"Upcoming deadline: {deadline}."
+            else:
+                reason = "No deadline specified."
+
+            task["recommendation_reason"] = (
+                f"Priority: {task['priority']}. {reason}"
+            )
+
+        return {
+            "student_id": student_id,
+            "total_pending_tasks": len(tasks),
+            "recommended_next_task": tasks[0] if tasks else None,
+            "all_recommendations": tasks,
+        }
 
     finally:
         connection.close()
