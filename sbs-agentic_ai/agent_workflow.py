@@ -140,6 +140,33 @@ def check_deadline_feasibility(tasks, available_hours):
             )
 
 
+def replan_schedule(tasks, available_hours):
+    """Try a revised schedule ordered by earliest deadline."""
+
+    pending_tasks = [
+        task for task in tasks
+        if task.get("status") != "completed"
+    ]
+
+    deadline_ordered_tasks = sorted(
+        pending_tasks,
+        key=lambda task: task["due_date"]
+    )
+
+    revised_schedule = create_study_schedule(
+        deadline_ordered_tasks,
+        available_hours
+    )
+
+    revised_errors = validate_schedule(
+        revised_schedule,
+        available_hours
+    )
+
+    return revised_schedule, revised_errors
+
+
+
 
 def run_agent():
     student_data = load_student_data()
@@ -198,6 +225,25 @@ def run_agent():
         schedule,
         available_hours,
     )
+    
+    if errors:
+        print("\nAttempting automatic replanning...")
+
+        revised_schedule, revised_errors = replan_schedule(
+            student_data["tasks"],
+            available_hours,
+        )
+
+        if not revised_errors:
+            schedule = revised_schedule
+            errors = revised_errors
+            print("Replanning successful!")
+        else:
+            print("Automatic replanning could not find a valid schedule.")
+            print("Remaining conflicts:")
+            for error in revised_errors:
+                print(f"- {error}")
+
 
     print("\n5. VALIDATION RESULT")
 
