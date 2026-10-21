@@ -112,6 +112,35 @@ def find_overdue_tasks(tasks):
     return overdue_tasks
 
 
+def validate_task_hours(tasks, schedule):
+    """Check whether every pending task has all its required hours scheduled."""
+
+    errors = []
+
+    for task in tasks:
+        if task.get("status") == "completed":
+            continue
+
+        required_hours = task["duration_hours"]
+
+        scheduled_hours = sum(
+            item["end_hour"] - item["start_hour"]
+            for item in schedule
+            if item["title"] == task["title"]
+        )
+
+        if scheduled_hours < required_hours:
+            missing_hours = required_hours - scheduled_hours
+            errors.append(
+                f"Incomplete task: '{task['title']}' has "
+                f"{scheduled_hours}/{required_hours} hours scheduled. "
+                f"{missing_hours} hour(s) still need scheduling."
+            )
+
+    return errors
+
+
+
 if __name__ == "__main__":
     study_schedule = [
     {

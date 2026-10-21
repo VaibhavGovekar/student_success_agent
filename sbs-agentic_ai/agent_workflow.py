@@ -9,6 +9,7 @@ from schedule_validator import (
     validate_deadlines,
     validate_completed_tasks,
     find_overdue_tasks,
+    validate_task_hours,
 )
 
 
@@ -24,8 +25,9 @@ def load_student_data():
 from datetime import date, timedelta
 
 
+
 def create_study_schedule(ranked_tasks, available_hours):
-    """Schedule tasks across days without exceeding daily study hours."""
+    """Schedule tasks without exceeding daily hours or ignoring deadlines."""
 
     schedule = []
     current_date = date.today()
@@ -33,7 +35,12 @@ def create_study_schedule(ranked_tasks, available_hours):
     hours_used_today = 0
 
     for task in ranked_tasks:
+        # Don't schedule completed tasks.
+        if task.get("status") == "completed":
+            continue
+
         remaining_hours = task["duration_hours"]
+        due_date = date.fromisoformat(task["due_date"])
 
         while remaining_hours > 0:
             # Move to the next day when today's capacity is full.
@@ -42,7 +49,14 @@ def create_study_schedule(ranked_tasks, available_hours):
                 current_hour = 9
                 hours_used_today = 0
 
-            # Allocate only the hours available today.
+            # If the task's deadline has passed, stop scheduling it.
+            if current_date > due_date:
+                print(
+                    f"WARNING: '{task['title']}' cannot fit "
+                    f"before its deadline ({task['due_date']})."
+                )
+                break
+
             hours_available = available_hours - hours_used_today
             allocated_hours = min(remaining_hours, hours_available)
 
@@ -63,20 +77,76 @@ def create_study_schedule(ranked_tasks, available_hours):
 
 
 
+
+
 def validate_schedule(schedule, available_hours):
     """Run all schedule validation checks."""
-    errors = []
 
-    errors += validate_no_overlap(schedule)
-    errors += validate_available_hours(schedule, available_hours)
-    errors += validate_deadlines(schedule)
-    errors += validate_completed_tasks(schedule)
+    student_data = load_student_data()
+
+    overlap_errors = validate_no_overlap(schedule)
+
+    hour_errors = validate_available_hours(
+        schedule, available_hours
+    )
+
+    deadline_errors = validate_deadlines(schedule)
+
+    completed_errors = validate_completed_tasks(schedule)
+
+    task_hour_errors = validate_task_hours(
+        student_data["tasks"], schedule
+    )
+
+    errors = (
+        overlap_errors
+        + hour_errors
+        + deadline_errors
+        + completed_errors
+        + task_hour_errors
+    )
 
     return errors
 
 
+
+def check_deadline_feasibility(tasks, available_hours):
+    """Check whether pending tasks can fit before their deadlines."""
+    today = date.today()
+    sorted_tasks = sorted(tasks, key=lambda task: task["due_date"])
+
+    cumulative_hours = 0
+    print("\n3. DEADLINE FEASIBILITY CHECK")
+
+    for task in sorted_tasks:
+        due_date = date.fromisoformat(task["due_date"])
+
+        if task.get("status") == "completed":
+            continue
+
+        cumulative_hours += task["duration_hours"]
+        days_available = max(0, (due_date - today).days + 1)
+        available_capacity = days_available * available_hours
+
+        if cumulative_hours <= available_capacity:
+            print(f"- {task['title']}: Feasible based on total hours.")
+        else:
+            print(
+                f"- {task['title']}: NOT FEASIBLE with "
+                f"{available_hours} study hour(s) per day. "
+                f"Required by this deadline: {cumulative_hours} "
+                f"hour(s); available capacity: "
+                f"{available_capacity} hour(s)."
+            )
+
+
+
 def run_agent():
     student_data = load_student_data()
+
+    available_hours = int(
+        input("How many study hours are available per day today? ")
+    )
     ranked_tasks = rank_tasks(student_data["tasks"])
 
     overdue_tasks = find_overdue_tasks(student_data["tasks"])
@@ -97,7 +167,7 @@ def run_agent():
     else:
         print("No overdue tasks.")
 
-    print("\n1. PRIORITIZED TASKS")
+    print("\n2. PRIORITIZED TASKS")
 
     for task in ranked_tasks:
         print(
@@ -105,12 +175,17 @@ def run_agent():
             f"(Priority: {task.get('priority_score', 'calculated')})"
         )
 
-    schedule = create_study_schedule(
-    ranked_tasks,
-    student_data["available_hours_per_day"],
+    check_deadline_feasibility(
+        student_data["tasks"],
+        available_hours,
     )
 
-    print("\n2. PROPOSED STUDY SCHEDULE")
+    schedule = create_study_schedule(
+        ranked_tasks,
+        available_hours,
+    )
+
+    print("\n4. PROPOSED STUDY SCHEDULE")
 
     for task in schedule:
         print(
@@ -121,15 +196,25 @@ def run_agent():
 
     errors = validate_schedule(
         schedule,
-        student_data["available_hours_per_day"],
+        available_hours,
     )
 
-    print("\n3. VALIDATION RESULT")
+    print("\n5. VALIDATION RESULT")
 
     if errors:
         print("SCHEDULE INVALID")
         for error in errors:
             print(f"- {error}")
+
+        print("\n6.REPLANNING RECOMMENDATION")
+        print(
+            "Your available study time is insufficient "
+            "to meet all current deadlines."
+        )
+        print(
+            "Consider increasing study hours, completing "
+            "urgent tasks first, or requesting deadline extensions."
+        )
     elif overdue_tasks:
         print("RECOVERY SCHEDULE VALID")
         print("Scheduling checks passed.")
