@@ -6,14 +6,14 @@
     {
       "id": 1,
       "title": "Complete Python assignment",
-      "due_date": "2026-10-20",
+      "due_date": "2026-10-23",
       "duration_hours": 2,
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Study for Java exam",
-      "due_date": "2026-10-20",
+      "due_date": "2026-10-22",
       "duration_hours": 3,
       "status": "pending"
     },

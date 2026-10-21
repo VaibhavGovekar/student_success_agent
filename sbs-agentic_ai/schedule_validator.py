@@ -2,47 +2,72 @@
 from datetime import date
 
 def validate_no_overlap(schedule):
-    """Check whether any two scheduled tasks overlap."""
+    """Check for overlapping tasks on the same date."""
     errors = []
 
     for i, task_a in enumerate(schedule):
         for task_b in schedule[i + 1:]:
-            if (
+            same_date = (
+                task_a["scheduled_date"]
+                == task_b["scheduled_date"]
+            )
+
+            overlaps = (
                 task_a["start_hour"] < task_b["end_hour"]
                 and task_b["start_hour"] < task_a["end_hour"]
-            ):
+            )
+
+            if same_date and overlaps:
                 errors.append(
-                    f"Overlap detected: '{task_a['title']}' and "
-                    f"'{task_b['title']}'."
+                    f"Overlap detected on {task_a['scheduled_date']}: "
+                    f"'{task_a['title']}' and '{task_b['title']}'."
                 )
 
     return errors
 
 
+
 def validate_available_hours(schedule, available_hours):
-    """Check whether scheduled study time exceeds available hours."""
-    total_hours = 0
+    """Check the study-hour limit separately for each date."""
+    hours_by_date = {}
 
     for task in schedule:
-        total_hours += task["end_hour"] - task["start_hour"]
+        scheduled_date = task["scheduled_date"]
+        duration = task["end_hour"] - task["start_hour"]
 
-    if total_hours > available_hours:
-        return [
-            f"Schedule exceeds available study time: "
-            f"{total_hours} hours scheduled, "
-            f"but only {available_hours} hours available."
-        ]
+        hours_by_date[scheduled_date] = (
+            hours_by_date.get(scheduled_date, 0) + duration
+        )
 
-    return []
+    errors = []
+
+    for scheduled_date, total_hours in hours_by_date.items():
+        if total_hours > available_hours:
+            errors.append(
+                f"Schedule exceeds available study time on "
+                f"{scheduled_date}: {total_hours} hours scheduled, "
+                f"but only {available_hours} hours available."
+            )
+
+    return errors
+
 
 
 def validate_deadlines(schedule):
-    """Check whether tasks are scheduled after their deadlines."""
+    """Check deadlines that have not already passed."""
     errors = []
+    today = date.today()
 
     for task in schedule:
-        scheduled_date = date.fromisoformat(task["scheduled_date"])
+        scheduled_date = date.fromisoformat(
+            task["scheduled_date"]
+        )
         due_date = date.fromisoformat(task["due_date"])
+
+        # Overdue tasks are reported by find_overdue_tasks().
+        # Do not report the same missed deadline twice.
+        if due_date < today:
+            continue
 
         if scheduled_date > due_date:
             errors.append(
@@ -66,7 +91,25 @@ def validate_completed_tasks(schedule):
 
     return errors
 
+def find_overdue_tasks(tasks):
+    """Return pending tasks whose deadlines have already passed."""
+    today = date.today()
+    overdue_tasks = []
 
+    for task in tasks:
+        if task.get("status") == "completed":
+            continue
+
+        due_date = date.fromisoformat(task["due_date"])
+
+        if due_date < today:
+            overdue_tasks.append({
+                "title": task["title"],
+                "due_date": task["due_date"],
+                "days_overdue": (today - due_date).days,
+            })
+
+    return overdue_tasks
 
 
 if __name__ == "__main__":
