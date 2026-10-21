@@ -37,6 +37,17 @@ def initialize_database():
         )
     """)
 
+    
+    # Add proficiency column to existing skills table if missing
+    cursor.execute("PRAGMA table_info(skills)")
+    skill_columns = [row["name"] for row in cursor.fetchall()]
+
+    if "proficiency" not in skill_columns:
+        cursor.execute(
+            "ALTER TABLE skills ADD COLUMN proficiency INTEGER DEFAULT 0"
+        )
+
+
     # Tasks table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (

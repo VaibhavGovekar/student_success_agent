@@ -528,3 +528,86 @@ def get_task_recommendations(student_id: int):
 
     finally:
         connection.close()
+
+
+
+
+# ---------------- SKILL ROUTES ----------------
+
+from pydantic import BaseModel, Field
+
+
+class SkillCreate(BaseModel):
+    skill: str = Field(min_length=1, max_length=100)
+    proficiency: int = Field(ge=0, le=100)
+
+
+@app.get("/students/{student_id}/skills")
+def get_student_skills(student_id: int):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM students WHERE id = ?",
+            (student_id,)
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        cursor.execute(
+            "SELECT id, student_id, skill, proficiency "
+            "FROM skills WHERE student_id = ? ORDER BY skill",
+            (student_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        connection.close()
+
+
+@app.post("/students/{student_id}/skills")
+def save_student_skill(student_id: int, skill_data: SkillCreate):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM students WHERE id = ?",
+            (student_id,)
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        cursor.execute(
+            "SELECT id FROM skills WHERE student_id = ? AND skill = ?",
+            (student_id, skill_data.skill.strip())
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute(
+                "UPDATE skills SET proficiency = ? WHERE id = ?",
+                (skill_data.proficiency, existing["id"])
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO skills (student_id, skill, proficiency) "
+                "VALUES (?, ?, ?)",
+                (
+                    student_id,
+                    skill_data.skill.strip(),
+                    skill_data.proficiency
+                )
+            )
+
+        connection.commit()
+
+        cursor.execute(
+            "SELECT id, student_id, skill, proficiency "
+            "FROM skills WHERE student_id = ? AND skill = ?",
+            (student_id, skill_data.skill.strip())
+        )
+        return dict(cursor.fetchone())
+    finally:
+        connection.close()
+
