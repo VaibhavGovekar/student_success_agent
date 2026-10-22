@@ -47,3 +47,30 @@ else:
         )
 
 print("\nFinal validation errors:", revised_errors)
+
+
+print("\nTEST 3: No pending tasks")
+
+schedule, errors = replan_schedule(
+    [{"id": 1, "title": "Completed task",
+      "due_date": "2026-10-22",
+      "duration_hours": 2, "status": "completed"}],
+    3,
+)
+
+if schedule == [] and errors == []:
+    print("PASSED: No schedule needed for completed tasks.")
+else:
+    print("FAILED:", schedule, errors)
+
+
+print("\nTEST 4: Zero available hours")
+
+schedule, errors = replan_schedule(tasks, 0)
+
+if schedule == [] and errors:
+    print("PASSED: Zero hours rejected safely.")
+    print("Error:", errors[0])
+else:
+    print("FAILED:", schedule, errors)
+

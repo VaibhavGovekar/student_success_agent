@@ -186,7 +186,10 @@ def replan_schedule(tasks, available_hours):
     last_errors = []
 
     for ordered_tasks in candidate_orders:
-        order_key = tuple(task["id"] for task in ordered_tasks)
+        order_key = tuple(
+            (task.get("id", task.get("title", str(index))))
+            for index, task in enumerate(ordered_tasks)
+        )
 
         if order_key in seen_orders:
             continue
