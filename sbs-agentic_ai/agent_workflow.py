@@ -1,6 +1,7 @@
 
 import json
 from pathlib import Path
+from itertools import permutations
 
 from priority_engine import rank_tasks
 from schedule_validator import (
@@ -26,8 +27,9 @@ from datetime import date, timedelta
 
 
 
-def create_study_schedule(ranked_tasks, available_hours):
-    """Schedule tasks without exceeding daily hours or ignoring deadlines."""
+
+def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
+    """Schedule pending tasks within daily capacity and deadlines."""
 
     schedule = []
     current_date = date.today()
@@ -35,7 +37,6 @@ def create_study_schedule(ranked_tasks, available_hours):
     hours_used_today = 0
 
     for task in ranked_tasks:
-        # Don't schedule completed tasks.
         if task.get("status") == "completed":
             continue
 
@@ -43,18 +44,17 @@ def create_study_schedule(ranked_tasks, available_hours):
         due_date = date.fromisoformat(task["due_date"])
 
         while remaining_hours > 0:
-            # Move to the next day when today's capacity is full.
             if hours_used_today >= available_hours:
                 current_date += timedelta(days=1)
                 current_hour = 9
                 hours_used_today = 0
 
-            # If the task's deadline has passed, stop scheduling it.
             if current_date > due_date:
-                print(
-                    f"WARNING: '{task['title']}' cannot fit "
-                    f"before its deadline ({task['due_date']})."
-                )
+                if show_warnings:
+                    print(
+                        f"WARNING: '{task['title']}' cannot fit "
+                        f"before its deadline ({task['due_date']})."
+                    )
                 break
 
             hours_available = available_hours - hours_used_today
@@ -74,6 +74,7 @@ def create_study_schedule(ranked_tasks, available_hours):
             remaining_hours -= allocated_hours
 
     return schedule
+
 
 
 
@@ -140,30 +141,75 @@ def check_deadline_feasibility(tasks, available_hours):
             )
 
 
+
 def replan_schedule(tasks, available_hours):
-    """Try a revised schedule ordered by earliest deadline."""
+    """Try alternative task orders and return the first valid schedule."""
 
     pending_tasks = [
         task for task in tasks
         if task.get("status") != "completed"
     ]
 
-    deadline_ordered_tasks = sorted(
-        pending_tasks,
-        key=lambda task: task["due_date"]
-    )
+    if available_hours <= 0:
+        return [], ["Available study hours must be greater than zero."]
 
-    revised_schedule = create_study_schedule(
-        deadline_ordered_tasks,
-        available_hours
-    )
+    if not pending_tasks:
+        return [], []
 
-    revised_errors = validate_schedule(
-        revised_schedule,
-        available_hours
-    )
+    # Try several sensible scheduling strategies first.
+    candidate_orders = [
+        sorted(pending_tasks, key=lambda task: task["due_date"]),
+        sorted(
+            pending_tasks,
+            key=lambda task: (
+                task["due_date"],
+                -task["duration_hours"],
+            ),
+        ),
+        sorted(
+            pending_tasks,
+            key=lambda task: task["duration_hours"],
+        ),
+        sorted(
+            pending_tasks,
+            key=lambda task: -task["duration_hours"],
+        ),
+    ]
 
-    return revised_schedule, revised_errors
+    # For small task lists, systematically try every ordering.
+    # Avoid factorial growth when there are many tasks.
+    if len(pending_tasks) <= 7:
+        candidate_orders.extend(permutations(pending_tasks))
+
+    seen_orders = set()
+    last_schedule = []
+    last_errors = []
+
+    for ordered_tasks in candidate_orders:
+        order_key = tuple(task["id"] for task in ordered_tasks)
+
+        if order_key in seen_orders:
+            continue
+
+        seen_orders.add(order_key)
+
+        candidate = create_study_schedule(
+            ordered_tasks,
+            available_hours,
+            show_warnings=False,
+        )
+
+        errors = validate_schedule(candidate, available_hours)
+
+        if not errors:
+            return candidate, []
+
+        last_schedule = candidate
+        last_errors = errors
+
+    # No valid schedule was found among the candidates.
+    return last_schedule, last_errors
+
 
 
 
@@ -234,14 +280,23 @@ def run_agent():
             available_hours,
         )
 
-        if not revised_errors:
-            schedule = revised_schedule
-            errors = revised_errors
+        schedule = revised_schedule
+        errors = revised_errors
+
+        if not errors:
             print("Replanning successful!")
+            print("\nREVISED STUDY SCHEDULE")
+
+            for task in schedule:
+                print(
+                    f"- {task['title']}: "
+                    f"{task['start_hour']}:00-{task['end_hour']}:00 "
+                    f"on {task['scheduled_date']}"
+                )
         else:
             print("Automatic replanning could not find a valid schedule.")
             print("Remaining conflicts:")
-            for error in revised_errors:
+            for error in errors:
                 print(f"- {error}")
 
 
