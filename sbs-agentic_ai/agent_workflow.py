@@ -245,7 +245,10 @@ def run_agent():
     available_hours = int(
         input("How many study hours are available per day today? ")
     )
-    ranked_tasks = rank_tasks(student_data["tasks"])
+    ranked_tasks = rank_tasks(
+        student_data["tasks"],
+        recommendations=recommendations,
+    )
 
     overdue_tasks = find_overdue_tasks(student_data["tasks"])
 

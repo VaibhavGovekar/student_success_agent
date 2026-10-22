@@ -53,18 +53,61 @@ def calculate_priority(task, today=None):
     return score
 
 
-def rank_tasks(tasks, today=None):
-    """Return incomplete tasks ranked from highest to lowest priority."""
+
+def rank_tasks(tasks, today=None, recommendations=None):
+    """
+    Rank incomplete tasks using deterministic priority scores
+    and optional mock-engine recommendations.
+
+    Deadline-based scores remain the primary ranking signal.
+    High-priority recommendations receive a modest score boost.
+    """
     ranked_tasks = []
+
+    recommendation_by_id = {}
+    recommendation_by_title = {}
+
+    for recommendation in recommendations or []:
+        task_id = recommendation.get("task_id")
+        title = recommendation.get("task_title")
+
+        if task_id is not None:
+            recommendation_by_id[task_id] = recommendation
+
+        if title:
+            recommendation_by_title[title] = recommendation
 
     for task in tasks:
         score = calculate_priority(task, today)
 
-        if score is not None:
-            ranked_tasks.append({
-                **task,
-                "priority_score": score
-            })
+        if score is None:
+            continue
+
+        recommendation = recommendation_by_id.get(task.get("id"))
+
+        if recommendation is None:
+            recommendation = recommendation_by_title.get(
+                task.get("title")
+            )
+
+        ranked_task = {
+            **task,
+            "priority_score": score,
+        }
+
+        if recommendation:
+            recommended_priority = recommendation.get(
+                "priority", "medium"
+            )
+
+            if recommended_priority == "high":
+                ranked_task["priority_score"] += 10
+
+            ranked_task["ai_recommendation"] = recommendation
+        else:
+            ranked_task["ai_recommendation"] = None
+
+        ranked_tasks.append(ranked_task)
 
     # Higher score first; earlier deadline breaks ties.
     ranked_tasks.sort(
@@ -75,6 +118,7 @@ def rank_tasks(tasks, today=None):
     )
 
     return ranked_tasks
+
 
 
 

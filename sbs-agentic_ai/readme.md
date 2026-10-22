@@ -95,3 +95,72 @@ Working on the Agentic AI module, including task analysis, prioritization, sched
 ## 📌 Project Status
 
 Early-stage prototype developed as part of a student hackathon project.
+
+## Backend Integration: Agent Cycle
+
+The Agentic AI module exposes `run_agent_cycle()` from `agent_cycle.py`.
+The backend can import this function and call it directly without running
+a separate terminal process.
+
+### Basic usage
+
+```python
+from agent_cycle import run_agent_cycle
+
+result = run_agent_cycle()
+
+if result["success"]:
+    print("Schedule status:", result["schedule_status"])
+    print("Study schedule:", result["schedule"])
+else:
+    print("Schedule errors:", result["validation_errors"])
+```
+
+### Optional inputs
+
+The function accepts optional `student_data` and `available_hours`
+arguments. If omitted, it loads the student data from `tasks.json`
+and uses the configured daily study hours.
+
+```python
+result = run_agent_cycle(
+    student_data={
+        "student_id": "STU001",
+        "available_hours_per_day": 3,
+        "tasks": [
+            {
+                "id": 1,
+                "title": "Complete Python assignment",
+                "due_date": "2026-10-23",
+                "duration_hours": 2,
+                "status": "pending"
+            }
+        ]
+    },
+    available_hours=3
+)
+```
+
+### Result fields
+
+- `student_id`: Student identifier.
+- `available_hours_per_day`: Daily study-hour limit used.
+- `recommendations`: Rule-based task recommendations.
+- `ranked_tasks`: Incomplete tasks ordered by priority.
+- `schedule`: Proposed final study schedule.
+- `initial_validation_errors`: Problems detected in the initial schedule.
+- `validation_errors`: Problems remaining after any replanning.
+- `replanning_attempted`: Whether the agent attempted to replan.
+- `success`: Whether the final schedule passed validation.
+- `schedule_status`: `valid` or `invalid`.
+- `recommendation_source`: Currently `mock_rules`.
+
+### Important integration notes
+
+- The current recommendation engine uses deterministic Python rules;
+  it does not require an LLM API call.
+- The backend should handle `ValueError` for invalid input.
+- The backend should check `success` before treating a schedule as valid.
+- The current schedule is a proposal; the backend should persist it only
+  through the team's approved database workflow.
+- Do not commit `.env` or expose API credentials.
