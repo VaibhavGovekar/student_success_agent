@@ -74,3 +74,107 @@ if schedule == [] and errors:
 else:
     print("FAILED:", schedule, errors)
 
+    
+
+print("\nTEST 5: Impossible deadline")
+
+impossible_tasks = [
+    {
+        "id": 99,
+        "title": "Urgent assignment",
+        "due_date": "2026-10-22",
+        "duration_hours": 5,
+        "status": "pending",
+    }
+]
+
+schedule, errors = replan_schedule(impossible_tasks, 3)
+
+urgent_errors = [
+    error for error in errors
+    if "Urgent assignment" in error
+]
+
+if urgent_errors:
+    print("PASSED: Impossible deadline detected.")
+    for error in urgent_errors:
+        print("-", error)
+else:
+    print("FAILED: Impossible deadline was not reported.")
+
+
+from schedule_validator import validate_available_hours, validate_deadlines
+from datetime import date, timedelta
+
+print("\nTEST 6: Daily study-hour limit")
+
+overloaded_schedule = [
+    {
+        "title": "Task A",
+        "start_hour": 9,
+        "end_hour": 11,
+        "scheduled_date": date.today().isoformat(),
+        "due_date": (date.today() + timedelta(days=1)).isoformat(),
+        "status": "pending",
+    },
+    {
+        "title": "Task B",
+        "start_hour": 11,
+        "end_hour": 13,
+        "scheduled_date": date.today().isoformat(),
+        "due_date": (date.today() + timedelta(days=1)).isoformat(),
+        "status": "pending",
+    },
+]
+
+hour_errors = validate_available_hours(overloaded_schedule, 3)
+
+if hour_errors:
+    print("PASSED: Daily-hour limit violation detected.")
+    print("-", hour_errors[0])
+else:
+    print("FAILED: Daily-hour limit violation was not detected.")
+
+
+print("\nTEST 7: Deadline violation")
+
+late_schedule = [
+    {
+        "title": "Late task",
+        "start_hour": 9,
+        "end_hour": 10,
+        "scheduled_date": (date.today() + timedelta(days=2)).isoformat(),
+        "due_date": (date.today() + timedelta(days=1)).isoformat(),
+        "status": "pending",
+    }
+]
+
+deadline_errors = validate_deadlines(late_schedule)
+
+if deadline_errors:
+    print("PASSED: Deadline violation detected.")
+    print("-", deadline_errors[0])
+else:
+    print("FAILED: Deadline violation was not detected.")
+
+
+print("\nTEST 8: Invalid task date")
+
+invalid_tasks = [
+    {
+        "id": 100,
+        "title": "Bad date task",
+        "due_date": "not-a-date",
+        "duration_hours": 1,
+        "status": "pending",
+    }
+]
+
+try:
+    replan_schedule(invalid_tasks, 3)
+except ValueError:
+    print("PASSED: Invalid date rejected.")
+else:
+    print("FAILED: Invalid date was not rejected.")
+
+

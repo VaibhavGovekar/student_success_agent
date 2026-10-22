@@ -76,14 +76,12 @@ def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
     return schedule
 
 
-
-
-
-
-def validate_schedule(schedule, available_hours):
+def validate_schedule(schedule, available_hours, tasks=None):
     """Run all schedule validation checks."""
 
-    student_data = load_student_data()
+    if tasks is None:
+        student_data = load_student_data()
+        tasks = student_data["tasks"]
 
     overlap_errors = validate_no_overlap(schedule)
 
@@ -96,7 +94,7 @@ def validate_schedule(schedule, available_hours):
     completed_errors = validate_completed_tasks(schedule)
 
     task_hour_errors = validate_task_hours(
-        student_data["tasks"], schedule
+        tasks, schedule
     )
 
     errors = (
@@ -108,6 +106,7 @@ def validate_schedule(schedule, available_hours):
     )
 
     return errors
+
 
 
 
@@ -202,7 +201,11 @@ def replan_schedule(tasks, available_hours):
             show_warnings=False,
         )
 
-        errors = validate_schedule(candidate, available_hours)
+        errors = validate_schedule(
+            candidate,
+            available_hours,
+            tasks=pending_tasks,
+        )
 
         if not errors:
             return candidate, []
