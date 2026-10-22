@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from itertools import permutations
+from mock_ai_engine import generate_recommendations
 
 from priority_engine import rank_tasks
 from schedule_validator import (
@@ -222,6 +223,24 @@ def replan_schedule(tasks, available_hours):
 
 def run_agent():
     student_data = load_student_data()
+
+    recommendations = generate_recommendations(
+        student_data["tasks"]
+    )
+
+    print("\n3. MOCK AI RECOMMENDATIONS")
+
+    if recommendations:
+        for item in recommendations:
+            print(f"- Task: {item['task_title']}")
+            print(f"  Priority: {item['priority']}")
+            print(f"  Reason: {item['priority_reason']}")
+            print(
+                "  Recommended study hours: "
+                f"{item['recommended_study_hours']}"
+            )
+    else:
+        print("No pending tasks need recommendations.")
 
     available_hours = int(
         input("How many study hours are available per day today? ")
