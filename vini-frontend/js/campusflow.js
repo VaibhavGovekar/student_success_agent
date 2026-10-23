@@ -195,18 +195,20 @@ li.append(name, tag, deleteBtn);
       try {
         li.style.pointerEvents = "none";
 
-        const action = task.completed ? "reopen" : "complete";
+        const wasCompleted = Boolean(task.completed);
+const action = wasCompleted ? "reopen" : "complete";
 
-        await apiRequest(`/tasks/${task.id}/${action}`, {
-          method: "PATCH"
-        });
+await apiRequest(`/tasks/${task.id}/${action}`, {
+  method: "PATCH"
+});
 
-        await loadAssignments();
-        showMessage(
-          task.completed
-            ? "Assignment reopened."
-            : "Assignment marked complete."
-        );
+await loadAssignments();
+
+showMessage(
+  wasCompleted
+    ? "Assignment reopened."
+    : "Assignment marked complete."
+);
       } catch (error) {
         showMessage(`Could not update assignment: ${error.message}`, true);
       } finally {

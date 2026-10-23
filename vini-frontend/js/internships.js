@@ -1,97 +1,199 @@
-// ---------- Dummy data (later this comes from the backend) ----------
+
+const API_BASE = "http://127.0.0.1:8000";
+
+// Temporary proficiency values for internship matching.
+// Next, we can connect these to the saved SkillPath data.
 const mySkills = {
-  HTML: 80, CSS: 70, JavaScript: 45, Python: 60,
-  React: 15, Git: 50, SQL: 30, "Node.js": 10, DSA: 40,
+  HTML: 80,
+  CSS: 70,
+  JavaScript: 45,
+  Python: 60,
+  React: 15,
+  Git: 50,
+  SQL: 30,
+  "Node.js": 10,
+  DSA: 40
 };
-const HAVE_LEVEL = 40; // a skill counts as "have" at this level or above
 
-const internships = [
-  { id: 1, role: "Frontend Intern",       company: "PixelWorks",   mode: "Remote",  location: "Remote",    stipend: "₹15,000/mo", skills: ["HTML", "CSS", "JavaScript", "React"] },
-  { id: 2, role: "Web Developer Intern",  company: "CodeNest",     mode: "On-site", location: "Mangaluru", stipend: "₹10,000/mo", skills: ["HTML", "CSS", "JavaScript", "Git"] },
-  { id: 3, role: "Python Developer Intern", company: "DataLeaf",   mode: "Remote",  location: "Remote",    stipend: "₹12,000/mo", skills: ["Python", "SQL", "Git"] },
-  { id: 4, role: "Backend Intern",        company: "ServerSide",   mode: "On-site", location: "Bengaluru", stipend: "₹20,000/mo", skills: ["Node.js", "SQL", "Git", "DSA"] },
-  { id: 5, role: "Data Analyst Intern",   company: "InsightLabs",  mode: "Remote",  location: "Remote",    stipend: "₹8,000/mo",  skills: ["Python", "SQL", "DSA"] },
-  { id: 6, role: "UI Developer Intern",   company: "DesignStack",  mode: "On-site", location: "Mysuru",    stipend: "₹12,000/mo", skills: ["HTML", "CSS", "JavaScript"] },
-];
+const HAVE_LEVEL = 40;
+let internships = [];
+let saved = {};
 
-const saved = {}; // id -> true
+try {
+  saved = JSON.parse(localStorage.getItem("savedInternships") || "{}");
+} catch {
+  saved = {};
+}
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
 
 function calcMatch(item) {
-  const matched = item.skills.filter(s => (mySkills[s] || 0) >= HAVE_LEVEL).length;
-  return Math.round((matched / item.skills.length) * 100);
+  const skills = Array.isArray(item.skills) ? item.skills : [];
+
+  if (!skills.length) return 0;
+
+  const matched = skills.filter(
+    skill => (mySkills[skill] || 0) >= HAVE_LEVEL
+  ).length;
+
+  return Math.round((matched / skills.length) * 100);
+}
+
+async function loadInternships() {
+  const grid = document.getElementById("internships");
+  const count = document.getElementById("count");
+
+  grid.innerHTML = '<p class="muted">Loading internships...</p>';
+
+  try {
+    const response = await fetch(`${API_BASE}/internships`);
+
+    if (!response.ok) {
+      throw new Error(`API request failed (${response.status})`);
+    }
+
+    internships = await response.json();
+
+    if (!Array.isArray(internships)) {
+      throw new Error("Unexpected response from the internship API.");
+    }
+
+    render();
+  } catch (error) {
+    console.error("Internship loading error:", error);
+    count.textContent = "Unable to load internships";
+    grid.innerHTML = `
+      <p class="muted">
+        Could not load internships. Check that the backend is running
+        and GET /internships works in Swagger.
+      </p>`;
+  }
 }
 
 function render() {
-  const q = document.getElementById("search").value.toLowerCase().trim();
+  const q = document.getElementById("search").value
+    .toLowerCase().trim();
+
   const mode = document.getElementById("mode").value;
   const minMatch = Number(document.getElementById("minMatch").value);
   const savedOnly = document.getElementById("savedOnly").checked;
 
   const list = internships
-    .map(i => ({ ...i, match: calcMatch(i) }))
-    .filter(i =>
-      (i.role + " " + i.company).toLowerCase().includes(q) &&
-      (mode === "All" || i.mode === mode) &&
-      i.match >= minMatch &&
-      (!savedOnly || saved[i.id])
+    .map(item => ({ ...item, match: calcMatch(item) }))
+    .filter(item =>
+      (`${item.role} ${item.company}`).toLowerCase().includes(q) &&
+      (mode === "All" || item.mode === mode) &&
+      item.match >= minMatch &&
+      (!savedOnly || saved[item.id])
     )
     .sort((a, b) => b.match - a.match);
 
-  document.getElementById("count").textContent = `${list.length} internship(s) found`;
+  document.getElementById("count").textContent =
+    `${list.length} internship(s) found`;
 
   const grid = document.getElementById("internships");
-  grid.innerHTML = "";
+  grid.replaceChildren();
 
-  if (list.length === 0) {
-    grid.innerHTML = `<p class="muted">No internships match your filters.</p>`;
+  if (!list.length) {
+    grid.innerHTML =
+      '<p class="muted">No internships match your filters.</p>';
     return;
   }
 
-  list.forEach(i => {
-    const level = i.match >= 75 ? "high" : i.match >= 50 ? "mid" : "low";
-    const chips = i.skills.map(s => {
-      const has = (mySkills[s] || 0) >= HAVE_LEVEL;
-      return `<span class="chip ${has ? "have" : "miss"}">${has ? "✓" : "✗"} ${s}</span>`;
+  list.forEach(item => {
+    const level = item.match >= 75
+      ? "high"
+      : item.match >= 50
+        ? "mid"
+        : "low";
+
+    const skills = Array.isArray(item.skills) ? item.skills : [];
+
+    const chips = skills.map(skill => {
+      const has = (mySkills[skill] || 0) >= HAVE_LEVEL;
+
+      return `
+        <span class="chip ${has ? "have" : "miss"}">
+          ${has ? "✓" : "✗"} ${escapeHTML(skill)}
+        </span>`;
     }).join("");
 
     const card = document.createElement("div");
     card.className = "intern-card";
+
     card.innerHTML = `
       <div class="intern-head">
         <div>
-          <h4>${i.role}</h4>
-          <div class="company">${i.company}</div>
+          <h4>${escapeHTML(item.role)}</h4>
+          <div class="company">${escapeHTML(item.company)}</div>
         </div>
-        <span class="match ${level}">${i.match}% match</span>
+        <span class="match ${level}">${item.match}% match</span>
       </div>
-      <div class="meta">📍 ${i.location} · ${i.mode} · 💰 ${i.stipend}</div>
+
+      <div class="meta">
+        📍 ${escapeHTML(item.location || "Not specified")}
+        · ${escapeHTML(item.mode || "Not specified")}
+        · 💰 ${escapeHTML(item.stipend || "Not specified")}
+      </div>
+
       <div class="chips">${chips}</div>
+
       <div class="card-actions">
-        <button class="btn" data-apply="${i.id}">Apply</button>
-        <button class="btn ghost ${saved[i.id] ? "saved" : ""}" data-save="${i.id}">
-          ${saved[i.id] ? "★ Saved" : "☆ Save"}
+        <button class="btn" data-apply="${item.id}">Apply</button>
+        <button class="btn ghost ${saved[item.id] ? "saved" : ""}"
+                data-save="${item.id}">
+          ${saved[item.id] ? "★ Saved" : "☆ Save"}
         </button>
       </div>`;
+
     grid.appendChild(card);
   });
 }
 
-// Button clicks (Save / Apply)
-document.getElementById("internships").addEventListener("click", e => {
-  const saveId = e.target.dataset.save;
-  const applyId = e.target.dataset.apply;
-  if (saveId) {
-    saved[saveId] = !saved[saveId];
+// Handle Save and Apply buttons.
+document.getElementById("internships").addEventListener("click", event => {
+  const saveButton = event.target.closest("[data-save]");
+  const applyButton = event.target.closest("[data-apply]");
+
+  if (saveButton) {
+    const id = saveButton.dataset.save;
+
+    saved[id] = !saved[id];
+
+    if (!saved[id]) delete saved[id];
+
+    localStorage.setItem("savedInternships", JSON.stringify(saved));
     render();
+    return;
   }
-  if (applyId) {
-    const item = internships.find(i => i.id === Number(applyId));
-    alert(`Application link for ${item.role} at ${item.company} will open here once the backend is connected.`);
+
+  if (applyButton) {
+    const id = Number(applyButton.dataset.apply);
+    const item = internships.find(internship => internship.id === id);
+
+    if (!item) return;
+
+    if (item.application_url) {
+      window.open(item.application_url, "_blank", "noopener,noreferrer");
+    } else {
+      alert("No application URL has been added for this internship yet.");
+    }
   }
 });
 
+// Search and filters.
 ["search", "mode", "minMatch", "savedOnly"].forEach(id => {
-  document.getElementById(id).addEventListener("input", render);
+  const element = document.getElementById(id);
+  element.addEventListener("input", render);
+  element.addEventListener("change", render);
 });
 
-render();
+loadInternships();
