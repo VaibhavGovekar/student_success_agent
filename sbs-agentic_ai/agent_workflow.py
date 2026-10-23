@@ -27,6 +27,80 @@ def load_student_data():
 from datetime import date, timedelta
 
 
+def validate_task_data(tasks):
+    """Validate task structure and field values before processing."""
+    errors = []
+    required_fields = [
+        "title",
+        "due_date",
+        "duration_hours",
+        "status",
+    ]
+    allowed_statuses = {"pending", "completed"}
+
+    if not isinstance(tasks, list):
+        raise ValueError("'tasks' must be a list.")
+
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            errors.append(
+                f"Task at index {index} must be a dictionary."
+            )
+            continue
+
+        missing_fields = [
+            field for field in required_fields
+            if field not in task
+        ]
+
+        if missing_fields:
+            errors.append(
+                f"Task at index {index} is missing required field(s): "
+                + ", ".join(missing_fields)
+            )
+            continue
+
+        title = task["title"]
+        if not isinstance(title, str) or not title.strip():
+            errors.append(
+                f"Task at index {index} must have a non-empty title."
+            )
+
+        due_date = task["due_date"]
+        if not isinstance(due_date, str):
+            errors.append(
+                f"Task at index {index} must have a date in YYYY-MM-DD format."
+            )
+        else:
+            try:
+                date.fromisoformat(due_date)
+            except ValueError:
+                errors.append(
+                    f"Task at index {index} has an invalid due date: "
+                    f"{due_date!r}."
+                )
+
+        duration = task["duration_hours"]
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or duration <= 0
+        ):
+            errors.append(
+                f"Task at index {index} must have a positive numeric duration."
+            )
+
+        status = task["status"]
+        if not isinstance(status, str) or status.lower() not in allowed_statuses:
+            errors.append(
+                f"Task at index {index} has an unsupported status: "
+                f"{status!r}. Use 'pending' or 'completed'."
+            )
+
+    return errors
+
+
+
 
 
 def create_study_schedule(

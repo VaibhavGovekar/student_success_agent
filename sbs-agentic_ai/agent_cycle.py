@@ -3,7 +3,7 @@
 Reusable Student Success Agent cycle.
 
 Flow:
-Observe tasks -> Recommend -> Plan -> Validate
+Observe tasks -> Validate -> Recommend -> Plan -> Validate
 -> Replan if needed -> Return structured results.
 """
 
@@ -13,6 +13,7 @@ from agent_workflow import (
     validate_schedule,
     replan_schedule,
     get_missed_deadline_warnings,
+    validate_task_data,
 )
 from mock_ai_engine import generate_recommendations
 from priority_engine import rank_tasks
@@ -26,7 +27,7 @@ def run_agent_cycle(student_data=None, available_hours=None):
     If omitted, load tasks.json and use its available hours.
     """
 
-    # 1. OBSERVE: load and check input data.
+    # 1. OBSERVE: load and validate student data.
     if student_data is None:
         student_data = load_student_data()
 
@@ -38,6 +39,36 @@ def run_agent_cycle(student_data=None, available_hours=None):
     if not isinstance(tasks, list):
         raise ValueError("'tasks' must be a list.")
 
+    # Check that each task is a dictionary and has required fields.
+    required_fields = [
+        "title",
+        "due_date",
+        "duration_hours",
+        "status",
+    ]
+
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            raise ValueError(
+                f"Task at index {index} must be a dictionary."
+            )
+
+        for field in required_fields:
+            if field not in task:
+                raise ValueError(
+                    f"Task at index {index} is missing required field: "
+                    f"'{field}'."
+                )
+
+    # Validate field values before processing tasks.
+    task_errors = validate_task_data(tasks)
+
+    if task_errors:
+        raise ValueError(
+            "Invalid task data: " + " ".join(task_errors)
+        )
+
+    # Report overdue tasks separately from validation errors.
     missed_deadline_warnings = get_missed_deadline_warnings(tasks)
 
     if available_hours is None:
@@ -48,7 +79,9 @@ def run_agent_cycle(student_data=None, available_hours=None):
         or not isinstance(available_hours, int)
         or available_hours <= 0
     ):
-        raise ValueError("Available hours must be a positive integer.")
+        raise ValueError(
+            "Available hours must be a positive integer."
+        )
 
     # 2. RECOMMEND: generate structured mock recommendations.
     recommendations = generate_recommendations(tasks)
@@ -74,7 +107,7 @@ def run_agent_cycle(student_data=None, available_hours=None):
     initial_errors = list(errors)
     replanning_attempted = False
 
-    # 5. REPLAN: retry with the existing replanning engine if needed.
+    # 5. REPLAN: retry using the existing replanning engine.
     if errors:
         replanning_attempted = True
 
@@ -90,7 +123,7 @@ def run_agent_cycle(student_data=None, available_hours=None):
     return {
         "student_id": student_data.get("student_id"),
         "available_hours_per_day": available_hours,
-                "missed_deadline_warnings": missed_deadline_warnings,
+        "missed_deadline_warnings": missed_deadline_warnings,
         "recommendations": recommendations,
         "ranked_tasks": ranked_tasks,
         "schedule": schedule,
@@ -125,7 +158,7 @@ if __name__ == "__main__":
     for item in result["schedule"]:
         print(
             f"- {item['title']}: "
-            f"{item['start_hour']}:00–{item['end_hour']}:00 "
+            f"{item['start_hour']}:00-{item['end_hour']}:00 "
             f"on {item['scheduled_date']}"
         )
 
