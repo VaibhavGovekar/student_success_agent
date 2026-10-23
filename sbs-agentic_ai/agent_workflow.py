@@ -29,8 +29,20 @@ from datetime import date, timedelta
 
 
 
-def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
-    """Schedule pending tasks within daily capacity and deadlines."""
+def create_study_schedule(
+    ranked_tasks,
+    available_hours,
+    show_warnings=True,
+    recovery_mode=False,
+):
+    """Schedule pending tasks within daily capacity and deadlines.
+
+    In recovery mode, overdue tasks are scheduled from today onward.
+    Their original deadlines are retained for reporting and validation.
+    """
+
+    if available_hours <= 0:
+        raise ValueError("Available study hours must be greater than zero.")
 
     schedule = []
     current_date = date.today()
@@ -38,11 +50,21 @@ def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
     hours_used_today = 0
 
     for task in ranked_tasks:
-        if task.get("status") == "completed":
+        if task.get("status", "").lower() == "completed":
             continue
 
         remaining_hours = task["duration_hours"]
         due_date = date.fromisoformat(task["due_date"])
+
+        # Normal mode respects deadlines strictly.
+        # Recovery mode allows overdue work to be scheduled from today.
+        if not recovery_mode and due_date < current_date:
+            if show_warnings:
+                print(
+                    f"WARNING: '{task['title']}' is overdue "
+                    f"(deadline: {task['due_date']})."
+                )
+            continue
 
         while remaining_hours > 0:
             if hours_used_today >= available_hours:
@@ -50,7 +72,7 @@ def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
                 current_hour = 9
                 hours_used_today = 0
 
-            if current_date > due_date:
+            if not recovery_mode and current_date > due_date:
                 if show_warnings:
                     print(
                         f"WARNING: '{task['title']}' cannot fit "
@@ -68,6 +90,7 @@ def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
                 "scheduled_date": current_date.isoformat(),
                 "due_date": task["due_date"],
                 "status": task["status"],
+                "recovery_mode": recovery_mode,
             })
 
             current_hour += allocated_hours
@@ -75,6 +98,8 @@ def create_study_schedule(ranked_tasks, available_hours, show_warnings=True):
             remaining_hours -= allocated_hours
 
     return schedule
+
+
 
 
 def validate_schedule(schedule, available_hours, tasks=None):
@@ -200,6 +225,7 @@ def replan_schedule(tasks, available_hours):
             ordered_tasks,
             available_hours,
             show_warnings=False,
+            recovery_mode=True,
         )
 
         errors = validate_schedule(
@@ -208,8 +234,10 @@ def replan_schedule(tasks, available_hours):
             tasks=pending_tasks,
         )
 
+        
         if not errors:
             return candidate, []
+ 
 
         last_schedule = candidate
         last_errors = errors
@@ -217,7 +245,24 @@ def replan_schedule(tasks, available_hours):
     # No valid schedule was found among the candidates.
     return last_schedule, last_errors
 
+def get_missed_deadline_warnings(tasks):
+    """Report pending tasks whose original deadlines have passed."""
+    today = date.today()
+    warnings = []
 
+    for task in tasks:
+        if task.get("status", "").lower() == "completed":
+            continue
+
+        due_date = date.fromisoformat(task["due_date"])
+
+        if due_date < today:
+            warnings.append(
+                f"Missed deadline: '{task['title']}' "
+                f"was due on {task['due_date']}."
+            )
+
+    return warnings
 
 
 

@@ -1,4 +1,6 @@
 
+from datetime import date, timedelta
+from schedule_validator import validate_available_hours, validate_deadlines
 from agent_workflow import (
     create_study_schedule,
     replan_schedule,
@@ -78,6 +80,8 @@ else:
 
 print("\nTEST 5: Impossible deadline")
 
+from agent_workflow import get_missed_deadline_warnings
+
 impossible_tasks = [
     {
         "id": 99,
@@ -88,23 +92,19 @@ impossible_tasks = [
     }
 ]
 
-schedule, errors = replan_schedule(impossible_tasks, 3)
+urgent_warnings = get_missed_deadline_warnings(impossible_tasks)
 
-urgent_errors = [
-    error for error in errors
-    if "Urgent assignment" in error
+urgent_matches = [
+    warning for warning in urgent_warnings
+    if "Urgent assignment" in warning
 ]
 
-if urgent_errors:
-    print("PASSED: Impossible deadline detected.")
-    for error in urgent_errors:
-        print("-", error)
+if urgent_matches:
+    print("PASSED: Missed original deadline detected.")
+    for warning in urgent_matches:
+        print("-", warning)
 else:
-    print("FAILED: Impossible deadline was not reported.")
-
-
-from schedule_validator import validate_available_hours, validate_deadlines
-from datetime import date, timedelta
+    print("FAILED: Missed original deadline was not reported.")
 
 print("\nTEST 6: Daily study-hour limit")
 

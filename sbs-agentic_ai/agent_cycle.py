@@ -12,6 +12,7 @@ from agent_workflow import (
     create_study_schedule,
     validate_schedule,
     replan_schedule,
+    get_missed_deadline_warnings,
 )
 from mock_ai_engine import generate_recommendations
 from priority_engine import rank_tasks
@@ -36,6 +37,8 @@ def run_agent_cycle(student_data=None, available_hours=None):
 
     if not isinstance(tasks, list):
         raise ValueError("'tasks' must be a list.")
+
+    missed_deadline_warnings = get_missed_deadline_warnings(tasks)
 
     if available_hours is None:
         available_hours = student_data.get("available_hours_per_day")
@@ -87,6 +90,7 @@ def run_agent_cycle(student_data=None, available_hours=None):
     return {
         "student_id": student_data.get("student_id"),
         "available_hours_per_day": available_hours,
+                "missed_deadline_warnings": missed_deadline_warnings,
         "recommendations": recommendations,
         "ranked_tasks": ranked_tasks,
         "schedule": schedule,
