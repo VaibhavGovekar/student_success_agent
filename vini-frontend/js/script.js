@@ -29,9 +29,20 @@ function renderStats(stats) {
   `).join("");
 }
 
-function renderList(id, items, type = "task") {
+
+function isCompleted(task) {
+  const value = task.completed;
+
+  return value === 1 ||
+         value === true ||
+         value === "1";
+}
+
+function renderList(id, items) {
   const el = document.getElementById(id);
   if (!el) return;
+
+  console.log("renderList called:", id, "item count:", items.length);
 
   if (!items.length) {
     el.innerHTML = "<li>Nothing to display yet.</li>";
@@ -39,16 +50,12 @@ function renderList(id, items, type = "task") {
   }
 
   el.innerHTML = items.map(item => {
-    const done = item.completed === 1 ||
-                 item.completed === true ||
-                 item.done === true;
-
     const title = item.title || item.text || "Untitled";
-    const tag = item.category || item.tag || "";
+    const tag = item.tag || item.category || "";
     const level = item.priority || item.level || "";
 
     return `
-      <li class="${done ? "done" : ""}">
+      <li>
         <span>${escapeHTML(title)}</span>
         <span class="tag ${escapeHTML(level)}">
           ${escapeHTML(tag)}
@@ -56,16 +63,28 @@ function renderList(id, items, type = "task") {
       </li>
     `;
   }).join("");
+
+  console.log("Rendered list", id, el.innerHTML);
+}
+
+
+
+function localDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function daysUntil(dateString) {
   if (!dateString) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const deadline = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(deadline.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   return Math.round((deadline - today) / 86400000);
 }
@@ -75,7 +94,7 @@ async function loadDashboard() {
     renderStats([
       { num: "…", label: "Tasks today" },
       { num: "…", label: "Deadlines this week" },
-      { num: "…", label: "Weekly progress" },
+      { num: "…", label: "Task completion" },
       { num: "—", label: "Internship matches" }
     ]);
 
@@ -91,17 +110,16 @@ async function loadDashboard() {
       renderStats([
         { num: "0", label: "Tasks today" },
         { num: "0", label: "Deadlines this week" },
-        { num: "0%", label: "Weekly progress" },
+        { num: "0%", label: "Task completion" },
         { num: "—", label: "Internship matches" }
       ]);
 
-      showMessage("tasks", "No student found. Create a student using Swagger first.");
-      showMessage("deadlines", "Create a student and add tasks to see deadlines.");
-      showMessage("agent", "Your dashboard is connected. Add tasks to receive recommendations.");
+      showMessage("tasks", "No student found. Create a student in Swagger.");
+      showMessage("deadlines", "Add a student and tasks to see deadlines.");
+      showMessage("agent", "Add tasks to receive recommendations.");
       return;
     }
 
-    // Use the first existing student for this initial integration.
     const student = students[0];
 
     const [tasksResponse, recommendationsResponse] = await Promise.all([
@@ -116,22 +134,37 @@ async function loadDashboard() {
     const tasks = await tasksResponse.json();
     const recommendations = await recommendationsResponse.json();
 
-    const pending = tasks.filter(task =>
-      task.completed !== 1 && task.completed !== true
-    );
+    console.log("Tasks received by dashboard:", tasks);
 
-    const todayString = new Date().toLocaleDateString("en-CA");
-    const tasksToday = pending.filter(task => task.deadline === todayString);
+    
+const pending = tasks.filter(task => !isCompleted(task));
+
+console.log("All tasks:", tasks);
+console.log("Completion status:", tasks.map(task => ({
+  title: task.title,
+  completed: task.completed,
+  completedType: typeof task.completed,
+  isCompleted: isCompleted(task)
+})));
+console.log("Pending count:", pending.length);
+
+
+    const completedCount = tasks.length - pending.length;
+
+    const progress = tasks.length
+      ? Math.round((completedCount / tasks.length) * 100)
+      : 0;
+
+    const todayString = localDateString();
+
+    const tasksToday = pending.filter(task =>
+      task.deadline === todayString
+    );
 
     const deadlinesThisWeek = pending.filter(task => {
       const days = daysUntil(task.deadline);
       return days !== null && days >= 0 && days <= 7;
     });
-
-    const completedCount = tasks.length - pending.length;
-    const progress = tasks.length
-      ? Math.round((completedCount / tasks.length) * 100)
-      : 0;
 
     renderStats([
       { num: String(tasksToday.length), label: "Tasks today" },
@@ -140,40 +173,53 @@ async function loadDashboard() {
       { num: "—", label: "Internship matches" }
     ]);
 
-    renderList("tasks", pending.slice(0, 5));
+    // Today's Tasks: pending tasks due today.
+  console.log("Pending array before rendering:", pending);
+console.log("Pending array length:", pending.length);
 
-    const upcoming = pending
-      .filter(task => task.deadline)
-      .sort((a, b) => a.deadline.localeCompare(b.deadline))
-      .slice(0, 5)
-      .map(task => {
-        const days = daysUntil(task.deadline);
-        let when = task.deadline;
+renderList("tasks", pending);
 
-        if (days < 0) when += " (overdue)";
-        else if (days === 0) when += " (today)";
-        else if (days === 1) when += " (tomorrow)";
-        else when += ` (${days} days)`;
+    console.log("Tasks passed to renderList:", pending.slice(0, 5));
+console.log("Tasks element:", document.getElementById("tasks"));
 
-        return { ...task, tag: when };
-      });
+    // Upcoming Deadlines: pending tasks due today or later.
+   
+const upcoming = pending
+  .filter(task => task.deadline)
+  .sort((a, b) => a.deadline.localeCompare(b.deadline))
+  .slice(0, 5)
+  .map(task => {
+    const days = daysUntil(task.deadline);
+    let when = task.deadline;
 
-    renderList("deadlines", upcoming);
+    if (days < 0) when += " (overdue)";
+    else if (days === 0) when += " (today)";
+    else if (days === 1) when += " (tomorrow)";
+    else when += ` (${days} days)`;
 
+    return { ...task, tag: when };
+  });
+
+renderList("deadlines", upcoming);
+
+
+    // Recommendations come from the backend.
     const recommended = recommendations.all_recommendations || [];
 
-    renderList("agent", recommended.slice(0, 5).map(task => ({
+    const agentItems = recommended.slice(0, 5).map(task => ({
       text: `${task.title}: ${task.recommendation_reason}`,
       tag: task.priority || "Recommended",
       level: task.priority || ""
-    })), "agent");
+    }));
+
+    renderList("agent", agentItems);
 
   } catch (error) {
     console.error("Dashboard loading error:", error);
 
     showMessage(
       "tasks",
-      "Unable to load live tasks. Check that the backend is running."
+      "Unable to load tasks. Check that the backend is running."
     );
     showMessage("deadlines", "Unable to load deadlines.");
     showMessage("agent", error.message);

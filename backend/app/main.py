@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.database import initialize_database, get_connection
 
-
+import json
 app = FastAPI(
     title="Student Success Agent API",
     description="APIs for student profiles, task management, and smart recommendations.",
@@ -74,6 +74,16 @@ class TaskCreate(BaseModel):
         if not value:
             raise ValueError("Task title cannot be empty")
         return value
+
+
+class InternshipCreate(BaseModel):
+    role: str = Field(..., min_length=2)
+    company: str = Field(..., min_length=2)
+    mode: Literal["Remote", "On-site", "Hybrid"] = "Remote"
+    location: str = ""
+    stipend: str = ""
+    skills: list[str] = Field(..., min_length=1)
+    application_url: str | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -608,6 +618,72 @@ def save_student_skill(student_id: int, skill_data: SkillCreate):
             (student_id, skill_data.skill.strip())
         )
         return dict(cursor.fetchone())
+    finally:
+        connection.close()
+
+
+
+# ---------------- INTERNSHIP ROUTES ----------------
+
+@app.get("/internships")
+def get_internships():
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT id, role, company, mode, location,
+                   stipend, skills, application_url
+            FROM internships
+            ORDER BY id DESC
+        """)
+
+        rows = cursor.fetchall()
+        result = []
+
+        for row in rows:
+            item = dict(row)
+            item["skills"] = json.loads(item["skills"])
+            result.append(item)
+
+        return result
+
+    finally:
+        connection.close()
+
+
+@app.post("/internships", status_code=201)
+def create_internship(internship: InternshipCreate):
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO internships
+            (role, company, mode, location, stipend,
+             skills, application_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            internship.role,
+            internship.company,
+            internship.mode,
+            internship.location,
+            internship.stipend,
+            json.dumps(internship.skills),
+            internship.application_url
+        ))
+
+        connection.commit()
+        internship_id = cursor.lastrowid
+
+        return {
+            "message": "Internship created successfully",
+            "id": internship_id,
+            "role": internship.role,
+            "company": internship.company
+        }
+
     finally:
         connection.close()
 

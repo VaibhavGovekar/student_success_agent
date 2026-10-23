@@ -63,5 +63,33 @@ def initialize_database():
         )
     """)
 
+    
+    # Internship listings table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS internships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            company TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            location TEXT,
+            stipend TEXT,
+            skills TEXT NOT NULL,
+            application_url TEXT
+        )
+    """)
+
+    # Saved internships for each student
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS saved_internships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            internship_id INTEGER NOT NULL,
+            UNIQUE(student_id, internship_id),
+            FOREIGN KEY(student_id) REFERENCES students(id),
+            FOREIGN KEY(internship_id) REFERENCES internships(id)
+        )
+    """)
+
+
     connection.commit()
     connection.close()
