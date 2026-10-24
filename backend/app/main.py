@@ -1,113 +1,44 @@
-
-from datetime import date
-from typing import Literal
-
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
 
 from app.database import initialize_database, get_connection
 
 import json
 app = FastAPI(
     title="Student Success Agent API",
-    description="APIs for student profiles, task management, and smart recommendations.",
-    version="1.2.0",
+    version="1.0.0"
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://127.0.0.1:5501",
-        "http://localhost:5501",
-    ],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --- Pydantic Request Models ---
+
+class TaskCreateRequest(BaseModel):
+    user_id: str
+    course_name: str
+    task_title: str
+    deadline: str  # ISO formatted string e.g. "2026-11-01T23:59:59"
+    priority: Optional[str] = "medium"
+    estimated_hours: Optional[int] = 2
+
+class TaskStatusUpdate(BaseModel):
+    status: str  # "pending", "in_progress", "completed"
+
+class SkillCreateRequest(BaseModel):
+    user_id: str
+    skill_name: str
+    proficiency: Optional[int] = 1
+
+class MatchInternshipsRequest(BaseModel):
+    query_embedding: List[float] = Field(..., description="1536-dimensional embedding vector")
+    student_cgpa: float
+    match_count: Optional[int] = 5
+
+class ScheduleCreateRequest(BaseModel):
+    user_id: str
+    weekly_plan: Dict[str, Any]
 
 
-initialize_database()
-
-
-# -------------------- MODELS --------------------
-
-TaskCategory = Literal[
-    "academic",
-    "skill_development",
-    "project",
-    "internship",
-]
-
-TaskPriority = Literal["low", "medium", "high"]
-
-
-class StudentCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    degree: str | None = None
-    semester: int | None = Field(default=None, ge=1)
-    cgpa: float | None = Field(default=None, ge=0, le=10)
-    career_goal: str | None = None
-    available_hours: float | None = Field(default=None, ge=0)
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, value):
-        value = value.strip()
-        if not value:
-            raise ValueError("Name cannot be empty")
-        return value
-
-
-class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    category: TaskCategory
-    deadline: date | None = None
-    priority: TaskPriority = "medium"
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value):
-        value = value.strip()
-        if not value:
-            raise ValueError("Task title cannot be empty")
-        return value
-
-
-class InternshipCreate(BaseModel):
-    role: str = Field(..., min_length=2)
-    company: str = Field(..., min_length=2)
-    mode: Literal["Remote", "On-site", "Hybrid"] = "Remote"
-    location: str = ""
-    stipend: str = ""
-    skills: list[str] = Field(..., min_length=1)
-    application_url: str | None = None
-
-
-class TaskUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    category: TaskCategory | None = None
-    deadline: date | None = None
-    priority: TaskPriority | None = None
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value):
-        if value is not None:
-            value = value.strip()
-            if not value:
-                raise ValueError("Task title cannot be empty")
-        return value
-
-
-# -------------------- BASIC ROUTES --------------------
-
-@app.get("/")
-def home():
-    return {"message": "Student Success Agent API is running"}
-
+# --- Health Check ---
 
 @app.get("/health")
 def health_check():
