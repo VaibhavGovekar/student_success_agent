@@ -1,27 +1,15 @@
-import type { WeeklyPlan } from "./api";
+import type { Task } from "./api";
 
-// Demo data only. Edit these values freely, the design lives in app/timetable/page.tsx
-export const demoPlan: WeeklyPlan = {
-  Mon: [
-    { start: "09:00", end: "11:00", title: "Python assignment", type: "academic" },
-    { start: "16:00", end: "17:00", title: "React basics", type: "skill" },
-  ],
-  Tue: [
-    { start: "10:00", end: "13:00", title: "Study for Java exam", type: "academic" },
-    { start: "17:00", end: "18:00", title: "Apply to 2 internships", type: "career" },
-  ],
-  Wed: [
-    { start: "09:00", end: "10:00", title: "Maths notes", type: "academic" },
-    { start: "15:00", end: "16:30", title: "SQL practice", type: "skill" },
-  ],
-  Thu: [
-    { start: "10:00", end: "12:00", title: "Java revision", type: "academic" },
-    { start: "16:00", end: "17:00", title: "Update resume", type: "career" },
-  ],
-  Fri: [
-    { start: "09:00", end: "11:00", title: "Mini project", type: "academic" },
-    { start: "15:00", end: "16:00", title: "Git practice", type: "skill" },
-  ],
-  Sat: [{ start: "11:00", end: "13:00", title: "Project work", type: "skill" }],
-  Sun: [{ start: "18:00", end: "19:00", title: "Weekly review", type: "career" }],
+const daysFromNow = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
 };
+
+// Demo data only. Edit these values freely, the design lives in app/tasks/page.tsx
+export const demoTasks: Task[] = [
+  { id: "1", course_name: "Python", task_title: "Complete Python assignment", deadline: daysFromNow(-1), estimated_hours: 2, status: "pending" },
+  { id: "2", course_name: "Java", task_title: "Study for Java exam", deadline: daysFromNow(2), estimated_hours: 3, status: "pending" },
+  { id: "3", course_name: "Maths", task_title: "Finish mathematics notes", deadline: daysFromNow(0), estimated_hours: 1, status: "completed" },
+  { id: "4", course_name: "DBMS", task_title: "Submit lab record", deadline: daysFromNow(1), estimated_hours: 2, status: "pending" },
+];
