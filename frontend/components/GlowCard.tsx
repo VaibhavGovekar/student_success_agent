@@ -24,6 +24,7 @@ export default function GlowCard({
       ref={ref}
       onMouseMove={onMove}
       className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-[#11121c]/80 ${className}`}
+    >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         style={{
