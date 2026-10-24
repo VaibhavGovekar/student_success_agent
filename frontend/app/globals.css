@@ -95,3 +95,42 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* ---------- Aurora background + helpers ---------- */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  animation: drift 20s ease-in-out infinite;
+  will-change: transform;
+}
+.aurora span:nth-child(1) {
+  width: 700px; height: 700px; top: -260px; left: -200px;
+  background: radial-gradient(circle, rgba(124, 92, 255, 0.32), transparent 65%);
+}
+.aurora span:nth-child(2) {
+  width: 640px; height: 640px; top: 5%; right: -240px; animation-delay: -7s;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.2), transparent 65%);
+}
+.aurora span:nth-child(3) {
+  width: 600px; height: 600px; bottom: -260px; left: 25%; animation-delay: -13s;
+  background: radial-gradient(circle, rgba(244, 114, 182, 0.16), transparent 65%);
+}
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(50px, 30px) scale(1.1); }
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #a78bfa, #22d3ee);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
