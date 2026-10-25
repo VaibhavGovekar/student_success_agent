@@ -4,8 +4,17 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import sys
+from pathlib import Path
 
 from app.database import get_supabase_client
+# Import the existing Agentic AI workflow.
+AGENTIC_AI_DIR = Path(__file__).resolve().parents[2] / "sbs-agentic_ai"
+
+if str(AGENTIC_AI_DIR) not in sys.path:
+    sys.path.insert(0, str(AGENTIC_AI_DIR))
+
+from agent_cycle import run_agent_cycle
 
 app = FastAPI(
     title="Student Success Agent API",
@@ -80,6 +89,89 @@ class InternshipCreate(BaseModel):
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+# -------------------- AGENTIC AI PLANNER --------------------
+
+DEFAULT_AVAILABLE_HOURS = 3
+
+
+@app.post("/students/{user_id}/agent/plan")
+def create_student_agent_plan(user_id: str):
+    """Build and validate a study plan from the student's Supabase tasks."""
+
+    supabase = get_supabase_client()
+
+    try:
+        user_response = (
+            supabase.table("users")
+            .select("id")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not user_response.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        task_response = (
+            supabase.table("academic_tasks")
+            .select("id, course_name, task_title, deadline, estimated_hours, status")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .order("deadline")
+            .execute()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve student tasks from Supabase",
+        ) from exc
+
+    if not task_response.data:
+        raise HTTPException(
+            status_code=422,
+            detail="Student has no pending tasks to schedule",
+        )
+
+    agent_tasks = []
+
+    for task in task_response.data:
+        deadline = task.get("deadline")
+        duration = task.get("estimated_hours")
+
+        if not deadline or not duration or duration <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Task {task.get('id')} needs a deadline and positive estimated_hours",
+            )
+
+        agent_tasks.append({
+            "title": task["task_title"],
+            "due_date": deadline[:10],
+            "duration_hours": float(duration),
+            "status": "pending",
+        })
+
+    try:
+        plan = run_agent_cycle(
+            student_data={
+                "student_id": user_id,
+                "available_hours_per_day": DEFAULT_AVAILABLE_HOURS,
+                "tasks": agent_tasks,
+            },
+            available_hours=DEFAULT_AVAILABLE_HOURS,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "student_id": user_id,
+        "available_hours_per_day": DEFAULT_AVAILABLE_HOURS,
+        **plan,
+    }
 
 
 # -------------------- STUDENT ROUTES --------------------
@@ -280,9 +372,25 @@ def create_internship(internship: InternshipCreate):
 
 # -------------------- VECTOR MATCH ROUTE (PGVECTOR) --------------------
 
+
 @app.post("/internships/match")
 def match_internships(match_req: MatchInternshipsRequest):
     supabase = get_supabase_client()
+
     try:
-        # Calls the pgvector RPC stored procedure in Supabase
-        response
+        response = supabase.rpc(
+            "match_internships",
+            {
+                "query_embedding": match_req.query_embedding,
+                "student_cgpa": match_req.student_cgpa,
+                "match_count": match_req.match_count or 5,
+            },
+        ).execute()
+
+        return {"matches": response.data or []}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to match internships",
+        ) from e
