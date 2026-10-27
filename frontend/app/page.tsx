@@ -3,12 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import "bootstrap-icons/font/bootstrap-icons.css";
-import { getSchedule, USER_ID, type Block, type BlockType, type WeeklyPlan } from "../../lib/api";
-import { demoPlan } from "../../lib/demoPlan";
-import Aurora from "../../components/Aurora";
-import GlowCard from "../../components/GlowCard";
-import CountUp from "../../components/CountUp";
-import FadeIn from "../../components/FadeIn";
+
+import {
+  getSchedule,
+  USER_ID,
+  type Block,
+  type BlockType,
+  type WeeklyPlan,
+} from "../lib/api";
+
+import { demoPlan } from "../lib/demoPlan";
+import Aurora from "../components/Aurora";
+import GlowCard from "../components/GlowCard";
+import CountUp from "../components/CountUp";
+import FadeIn from "../components/FadeIn";
 
 type Item = Block & { id: string; day: string; missed?: boolean; movedFrom?: string };
 type Step = { icon: string; title: string; detail: string };

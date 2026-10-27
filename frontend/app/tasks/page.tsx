@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import { getTasks, createTask, USER_ID, type Task, type Status } from "../../lib/api";
-import { demoTasks } from "../../lib/demoTasks";
+import { demoTasks } from "../../lib/demoPlan";
 import Aurora from "../../components/Aurora";
 import GlowCard from "../../components/GlowCard";
 import CountUp from "../../components/CountUp";
