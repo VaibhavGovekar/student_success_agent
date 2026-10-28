@@ -1,12 +1,27 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-export const USER_ID = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? "";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
+const BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+export const USER_ID =
+  process.env.NEXT_PUBLIC_DEMO_USER_ID || "";
+
+async function request<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
   });
-  if (!res.ok) throw new Error(`API ${res.status} on ${path}`);
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`API ${res.status} on ${path}: ${detail}`);
+  }
+
   return res.json();
 }
 
@@ -31,10 +46,18 @@ export type Match = {
 };
 
 export type BlockType = "academic" | "skill" | "career" | "break";
-export type Block = { start: string; end: string; title: string; type: BlockType };
+
+export type Block = {
+  start: string;
+  end: string;
+  title: string;
+  type: BlockType;
+};
+
 export type WeeklyPlan = Record<string, Block[]>;
 
-export const getTasks = (userId: string) => request<Task[]>(`/tasks/${userId}`);
+export const getTasks = (userId: string) =>
+  request<Task[]>(`/tasks/${encodeURIComponent(userId)}`);
 
 export const createTask = (t: {
   user_id: string;
@@ -42,13 +65,27 @@ export const createTask = (t: {
   task_title: string;
   deadline: string;
   estimated_hours: number;
-}) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(t) });
+}) =>
+  request<Task>("/tasks", {
+    method: "POST",
+    body: JSON.stringify(t),
+  });
 
-export const matchInternships = (userId: string, cgpa: number, count = 6) =>
+export const matchInternships = (
+  userId: string,
+  cgpa: number,
+  count = 6
+) =>
   request<Match[]>("/match-internships", {
     method: "POST",
-    body: JSON.stringify({ user_id: userId, student_cgpa: cgpa, match_count: count }),
+    body: JSON.stringify({
+      user_id: userId,
+      student_cgpa: cgpa,
+      match_count: count,
+    }),
   });
 
 export const getSchedule = (userId: string) =>
-  request<{ weekly_plan: WeeklyPlan }>(`/schedule/${userId}`);
+  request<{ weekly_plan: WeeklyPlan }>(
+    `/schedule/${encodeURIComponent(userId)}`
+  );
