@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / "backend" / ".env")
 
 API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 def generate_recommendations(tasks):
@@ -35,6 +35,7 @@ Analyze these pending student tasks:
 {json.dumps(tasks, indent=2)}
 
 Return ONLY a JSON array. For every task, include:
+- task_id: exact task ID from the input
 - task_title: exact task title
 - priority: "high", "medium", or "low"
 - priority_reason: a short explanation based on its deadline and duration
@@ -57,12 +58,22 @@ Consider overdue tasks urgent. Do not invent tasks.
         raise ValueError("Gemini returned an invalid recommendation format.")
 
     expected_titles = {task["title"] for task in tasks}
+    expected_tasks_by_id = {
+        str(task["id"]): task for task in tasks if task.get("id") is not None
+    }
 
     for item in recommendations:
         if not isinstance(item, dict):
             raise ValueError("Gemini returned an invalid recommendation item.")
 
-        if item.get("task_title") not in expected_titles:
+        if expected_tasks_by_id:
+            task_id = str(item.get("task_id", ""))
+            expected_task = expected_tasks_by_id.get(task_id)
+            if expected_task is None:
+                raise ValueError("Gemini returned an unknown task ID.")
+            if item.get("task_title") != expected_task["title"]:
+                raise ValueError("Gemini returned a task title that does not match its ID.")
+        elif item.get("task_title") not in expected_titles:
             raise ValueError("Gemini returned an unknown task title.")
 
         if item.get("priority") not in {"high", "medium", "low"}:

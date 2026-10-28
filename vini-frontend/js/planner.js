@@ -1,6 +1,6 @@
 const API_BASE_URL = "http://127.0.0.1:8000";
 // Replace with the active student UUID or load dynamically from session/auth
-const CURRENT_USER_ID = "00000000-0000-0000-0000-000000000000";
+let CURRENT_USER_ID = null;
 
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -36,6 +36,11 @@ function mapDeadlineToDay(deadlineStr) {
 // --- Fetch live tasks from FastAPI -> Supabase ---
 async function loadTasksFromAPI() {
   try {
+    const studentsResponse = await fetch(`${API_BASE_URL}/students`);
+    if (!studentsResponse.ok) throw new Error(`Could not load students (${studentsResponse.status})`);
+    const students = await studentsResponse.json();
+    if (!students.length) throw new Error("Create a student profile before using the planner.");
+    CURRENT_USER_ID = students[0].id;
     const response = await fetch(`${API_BASE_URL}/tasks/${CURRENT_USER_ID}`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
@@ -44,7 +49,7 @@ async function loadTasksFromAPI() {
       tasks = data.tasks.map(t => ({
         id: t.id,
         title: t.task_title || t.course_name,
-        type: t.priority === "high" ? "academic" : "skill",
+        type: "academic",
         day: mapDeadlineToDay(t.deadline),
         status: t.status === "completed" ? "done" : "pending",
         moved: false
@@ -98,8 +103,14 @@ function render() {
 
   const logEl = document.getElementById("log");
   if (logEl) {
-    logEl.innerHTML = logs.map(l => `<li><span>${l}</span></li>`).join("");
+    logEl.innerHTML = logs.map(l => `<li><span>${escapeHTML(l)}</span></li>`).join("");
   }
+}
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[char]);
 }
 
 // Click a task to toggle completion and sync with API
@@ -132,66 +143,61 @@ if (boardEl) {
 
 // ---------- The agent: Observe -> Reason -> Act -> Evaluate ----------
 async function runAgent() {
-  logs = [];
-
-  // 1. OBSERVE
-  const overdue = tasks.filter(t => t.status !== "done" && t.day < today);
-  logs.push(`👀 Observe: checked the week. ${overdue.length} task(s) missed before ${days[today]}.`);
-
-  if (overdue.length === 0) {
-    logs.push("✅ Evaluate: everything is on track. No re-planning needed.");
+  logs = ["👀 Observe: loading pending tasks from Supabase."];
+  render();
+  if (!CURRENT_USER_ID) {
+    logs.push("Create a student profile first.");
     render();
     return;
   }
 
-  overdue.forEach(t => (t.status = "missed"));
-
-  // 2. REASON
-  const order = { academic: 0, skill: 1, career: 2 };
-  overdue.sort((a, b) => (order[a.type] || 0) - (order[b.type] || 0));
-  logs.push("🧠 Reason: academic work first, then skills, then career tasks.");
-
-  // 3. ACT
-  overdue.forEach(t => {
-    let best = today;
-    let bestLoad = Infinity;
-    for (let d = today; d < 7; d++) {
-      const load = tasks.filter(x => x.day === d && x.status !== "done").length;
-      if (load < bestLoad) {
-        bestLoad = load;
-        best = d;
-      }
-    }
-    const from = days[t.day];
-    t.day = best;
-    t.status = "pending";
-    t.moved = true;
-    logs.push(`🔧 Act: moved "${t.title}" from ${from} to ${days[best]}.`);
-  });
-
-  // 4. EVALUATE & PERSIST
-  const left = tasks.filter(t => t.status !== "done").length;
-  logs.push(`📊 Evaluate: ${left} task(s) left, spread over ${days[today]}–${days[6]}.`);
-  render();
-
-  // Save the re-planned schedule to Supabase agent_schedules table
   try {
-    await fetch(`${API_BASE_URL}/schedule`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: CURRENT_USER_ID,
-        weekly_plan: {
-          generated_at: new Date().toISOString(),
-          tasks: tasks
-        }
-      })
-    });
-    logs.push("💾 Plan automatically saved to agent_schedules.");
+    logs.push("🧠 Reason: asking the backend planner to prioritize tasks and build a schedule.");
     render();
-  } catch (err) {
-    console.error("Could not persist schedule to Supabase:", err);
+    const response = await fetch(`${API_BASE_URL}/students/${CURRENT_USER_ID}/agent/plan`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || `Planner failed (${response.status})`);
+
+    const dayIndex = dateString => {
+      const date = new Date(`${dateString}T00:00:00`);
+      return (date.getDay() + 6) % 7;
+    };
+    for (const block of result.schedule || []) {
+      const task = tasks.find(item => item.title === block.title);
+      if (!task) continue;
+      task.day = dayIndex(block.scheduled_date);
+      task.status = "pending";
+      task.moved = true;
+    }
+    const source = result.recommendation_source === "gemini" ? "Gemini AI" : "the built-in rules fallback";
+    logs.push(`✨ Recommendations came from ${source}.`);
+    if (result.recommendation_fallback_reason) logs.push(`Gemini status: ${result.recommendation_fallback_reason}`);
+    (result.ranked_tasks || []).forEach((task, index) => {
+      logs.push(`🏷️ Priority #${index + 1}: ${task.title} — score ${task.priority_score}.`);
+    });
+    for (const item of result.recommendations || []) {
+      logs.push(`🧠 ${item.task_title}: ${item.priority} priority — ${item.priority_reason} Suggested study time: ${item.recommended_study_hours}h.`);
+    }
+    for (const warning of result.missed_deadline_warnings || []) logs.push(`⚠️ ${warning}`);
+    for (const block of result.schedule || []) {
+      const start = `${String(block.start_hour).padStart(2, "0")}:00`;
+      const end = `${String(block.end_hour).padStart(2, "0")}:00`;
+      logs.push(`📅 ${block.title}: ${block.scheduled_date}, ${start}–${end}${block.recovery_mode ? " (recovery)" : ""}.`);
+    }
+    if (result.initial_validation_errors?.length) {
+      logs.push(`Initial schedule needed replanning: ${result.initial_validation_errors.join(" ")}`);
+    }
+    if (result.validation_errors?.length) {
+      logs.push(`Validation issues remain: ${result.validation_errors.join(" ")}`);
+    } else {
+      logs.push("✅ SCHEDULE VALID: all scheduling checks passed.");
+    }
+    if (result.recovery_schedule) logs.push("🔁 Recovery schedule created for overdue work.");
+    logs.push(`Saved ${result.schedule_type} plan to agent_schedules.`);
+  } catch (error) {
+    logs.push(`Could not generate a plan: ${error.message}`);
   }
+  render();
 }
 
 const runBtn = document.getElementById("runBtn");

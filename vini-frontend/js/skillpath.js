@@ -1,6 +1,6 @@
 
 const API_BASE = "http://127.0.0.1:8000";
-const STUDENT_ID = 1;
+let STUDENT_ID = null;
 const STORAGE_KEY = "studentSuccessSkillPathProgress";
 
 // Fallback values for skills not saved in the database yet
@@ -91,12 +91,15 @@ function showMessage(message, isError = false) {
 // ---------- Load saved skills ----------
 async function loadSkillsFromAPI() {
   try {
+    const students = await apiRequest("/students");
+    if (!students.length) throw new Error("Create a student profile before syncing skills.");
+    STUDENT_ID = students[0].id;
     const savedSkills = await apiRequest(
       `/students/${STUDENT_ID}/skills`
     );
 
     savedSkills.forEach(item => {
-      mySkills[item.skill] = item.proficiency;
+      mySkills[item.skill_name] = item.proficiency;
     });
 
     render();
@@ -244,9 +247,10 @@ document.getElementById("skills").addEventListener("click", async event => {
   button.disabled = true;
 
   try {
+    if (!STUDENT_ID) throw new Error("Student profile is not loaded yet.");
     await apiRequest(`/students/${STUDENT_ID}/skills`, {
       method: "POST",
-      body: JSON.stringify({ skill, proficiency })
+      body: JSON.stringify({ skill_name: skill, proficiency })
     });
 
     mySkills[skill] = proficiency;

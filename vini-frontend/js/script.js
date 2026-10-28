@@ -122,31 +122,15 @@ async function loadDashboard() {
 
     const student = students[0];
 
-    const [tasksResponse, recommendationsResponse] = await Promise.all([
-      fetch(`${API_BASE}/students/${student.id}/tasks`),
-      fetch(`${API_BASE}/students/${student.id}/recommendations`)
-    ]);
-
-    if (!tasksResponse.ok || !recommendationsResponse.ok) {
-      throw new Error("Could not load tasks or recommendations.");
-    }
-
-    const tasks = await tasksResponse.json();
-    const recommendations = await recommendationsResponse.json();
-
-    console.log("Tasks received by dashboard:", tasks);
-
-    
-const pending = tasks.filter(task => !isCompleted(task));
-
-console.log("All tasks:", tasks);
-console.log("Completion status:", tasks.map(task => ({
-  title: task.title,
-  completed: task.completed,
-  completedType: typeof task.completed,
-  isCompleted: isCompleted(task)
-})));
-console.log("Pending count:", pending.length);
+    const tasksResponse = await fetch(`${API_BASE}/tasks/${student.id}`);
+    if (!tasksResponse.ok) throw new Error("Could not load student tasks.");
+    const taskData = await tasksResponse.json();
+    const tasks = (taskData.tasks || []).map(task => ({
+      ...task,
+      title: task.task_title,
+      completed: task.status === "completed"
+    }));
+    const pending = tasks.filter(task => !isCompleted(task));
 
 
     const completedCount = tasks.length - pending.length;
@@ -203,12 +187,9 @@ const upcoming = pending
 renderList("deadlines", upcoming);
 
 
-    // Recommendations come from the backend.
-    const recommended = recommendations.all_recommendations || [];
-
-    const agentItems = recommended.slice(0, 5).map(task => ({
-      text: `${task.title}: ${task.recommendation_reason}`,
-      tag: task.priority || "Recommended",
+    const agentItems = pending.slice(0, 5).map(task => ({
+      text: `${task.title}: ${task.deadline ? `due ${task.deadline.slice(0, 10)}` : "no deadline"}`,
+      tag: task.priority || "medium",
       level: task.priority || ""
     }));
 

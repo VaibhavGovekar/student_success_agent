@@ -124,10 +124,12 @@ async function loadStudent() {
 
 // ---------- Assignments from database ----------
 async function loadAssignments() {
-  const tasks = await apiRequest(`/students/${studentId}/tasks`);
-
-  // CampusFlow displays academic assignments only.
-  assignments = tasks.filter(task => task.category === "academic");
+  const response = await apiRequest(`/tasks/${studentId}`);
+  assignments = (response.tasks || []).map(task => ({
+    ...task,
+    title: task.task_title,
+    completed: task.status === "completed"
+  }));
 
   renderAssignments();
 }
@@ -196,10 +198,9 @@ li.append(name, tag, deleteBtn);
         li.style.pointerEvents = "none";
 
         const wasCompleted = Boolean(task.completed);
-const action = wasCompleted ? "reopen" : "complete";
-
-await apiRequest(`/tasks/${task.id}/${action}`, {
-  method: "PATCH"
+        await apiRequest(`/tasks/${task.id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: wasCompleted ? "pending" : "completed" })
 });
 
 await loadAssignments();
@@ -242,13 +243,15 @@ document.getElementById("addBtn").addEventListener("click", async () => {
   button.disabled = true;
 
   try {
-    await apiRequest(`/students/${studentId}/tasks`, {
+    await apiRequest("/tasks", {
       method: "POST",
       body: JSON.stringify({
-        title,
-        category: "academic",
+        user_id: studentId,
+        course_name: "General",
+        task_title: title,
         deadline,
-        priority: "medium"
+        priority: "medium",
+        estimated_hours: 2
       })
     });
 

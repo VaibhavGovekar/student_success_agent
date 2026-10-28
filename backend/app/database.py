@@ -8,9 +8,9 @@ from supabase import Client, create_client
 
 # Explicitly load backend/.env
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(ENV_FILE, override=True)
+load_dotenv(ENV_FILE, override=False)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = (
     os.getenv("SUPABASE_KEY")
     or os.getenv("SUPABASE_SERVICE_ROLE_KEY")

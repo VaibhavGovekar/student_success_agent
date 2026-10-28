@@ -1,5 +1,6 @@
 const API_BASE = "http://127.0.0.1:8000";
-const CURRENT_USER_ID = "00000000-0000-0000-0000-000000000000";
+let CURRENT_USER_ID = null;
+let currentStudent = null;
 
 // Fallback skills if user hasn't synced with database yet
 let mySkills = {
@@ -34,20 +35,6 @@ function escapeHTML(value) {
   })[char]);
 }
 
-function calcMatch(item) {
-  const skills = Array.isArray(item.skills) 
-    ? item.skills 
-    : (Array.isArray(item.required_skills) ? item.required_skills : []);
-
-  if (!skills.length) return 70; // Baseline match when skill tags aren't specified
-
-  const matched = skills.filter(
-    skill => (mySkills[skill] || 0) >= HAVE_LEVEL
-  ).length;
-
-  return Math.round((matched / skills.length) * 100);
-}
-
 async function loadInternships() {
   const grid = document.getElementById("internships");
   const count = document.getElementById("count");
@@ -55,30 +42,42 @@ async function loadInternships() {
   grid.innerHTML = '<p class="muted">Loading internships...</p>';
 
   try {
-    const response = await fetch(`${API_BASE}/internships?limit=50`);
+    const studentsResponse = await fetch(`${API_BASE}/students`);
+    if (!studentsResponse.ok) throw new Error(`Could not load students (${studentsResponse.status})`);
+    const students = await studentsResponse.json();
+    currentStudent = students[0];
+    if (!currentStudent) throw new Error("Create a student profile before requesting internship matches.");
+    CURRENT_USER_ID = currentStudent.id;
+    const skillsResponse = await fetch(`${API_BASE}/students/${CURRENT_USER_ID}/skills`);
+    if (skillsResponse.ok) {
+      const savedSkills = await skillsResponse.json();
+      Object.keys(mySkills).forEach(skill => delete mySkills[skill]);
+      savedSkills.forEach(skill => { mySkills[skill.skill_name] = skill.proficiency; });
+    }
 
+    const response = await fetch(`${API_BASE}/internships/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: CURRENT_USER_ID,
+        student_cgpa: Number(currentStudent.cgpa ?? currentStudent.current_cgpa ?? 0),
+        match_count: 50
+      })
+    });
     if (!response.ok) {
-      throw new Error(`API request failed (${response.status})`);
+      const failure = await response.json().catch(() => ({}));
+      throw new Error(failure.detail || `Semantic match request failed (${response.status})`);
     }
-
     const data = await response.json();
-
-    // Support both { internships: [...] } and raw array responses
-    internships = Array.isArray(data) ? data : (data.internships || []);
-
-    if (!Array.isArray(internships)) {
-      throw new Error("Unexpected response structure from internship API.");
-    }
+    internships = data.matches;
+    if (!Array.isArray(internships)) throw new Error("Unexpected response from internship matching API.");
 
     render();
   } catch (error) {
     console.error("Internship loading error:", error);
     count.textContent = "Unable to load internships";
     grid.innerHTML = `
-      <p class="muted">
-        Could not load internships. Check that the backend is running at ${API_BASE}
-        and GET /internships works in Swagger.
-      </p>`;
+      <p class="muted">${escapeHTML(error.message)}. Check the backend, student profile, Gemini key, and internship embeddings.</p>`;
   }
 }
 
@@ -97,11 +96,11 @@ function render() {
     .map(item => ({
       ...item,
       displayTitle: item.role || item.title || "Software Intern",
-      match: item.similarity ? Math.round(item.similarity * 100) : calcMatch(item)
+      match: Math.round(Number(item.similarity || 0) * 100)
     }))
     .filter(item =>
       (`${item.displayTitle} ${item.company || ""}`).toLowerCase().includes(q) &&
-      (mode === "All" || item.mode === mode) &&
+      (mode === "All" || !item.mode || item.mode === mode) &&
       item.match >= minMatch &&
       (!savedOnly || saved[item.id])
     )
@@ -151,6 +150,8 @@ function render() {
         · ${escapeHTML(item.mode || "Internship")}
         · 💰 ${escapeHTML(item.stipend || "Competitive")}
       </div>
+
+      <p>${escapeHTML(item.role_description || "")}</p>
 
       <div class="chips">${chips}</div>
 
