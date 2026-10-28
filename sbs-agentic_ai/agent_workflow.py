@@ -36,7 +36,7 @@ def validate_task_data(tasks):
         "duration_hours",
         "status",
     ]
-    allowed_statuses = {"pending", "completed"}
+    allowed_statuses = {"pending", "in_progress", "completed"}
 
     if not isinstance(tasks, list):
         raise ValueError("'tasks' must be a list.")
