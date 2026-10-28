@@ -56,20 +56,40 @@ export type Block = {
 
 export type WeeklyPlan = Record<string, Block[]>;
 
-export const getTasks = (userId: string) =>
-  request<Task[]>(`/tasks/${encodeURIComponent(userId)}`);
+export const getTasks = async (userId: string): Promise<Task[]> => {
+  const response = await request<{ tasks: Task[] }>(
+    `/tasks/${encodeURIComponent(userId)}`
+  );
+  return response.tasks;
+};
 
-export const createTask = (t: {
+export const createTask = async (t: {
   user_id: string;
   course_name: string;
   task_title: string;
   deadline: string;
   estimated_hours: number;
-}) =>
-  request<Task>("/tasks", {
+}): Promise<Task> => {
+  const response = await request<{ task: Task }>("/tasks", {
     method: "POST",
     body: JSON.stringify(t),
   });
+  return response.task;
+};
+
+export const updateTaskStatus = async (
+  taskId: string,
+  status: "pending" | "completed"
+): Promise<Task> => {
+  const response = await request<{ task: Task }>(
+    `/tasks/${encodeURIComponent(taskId)}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }
+  );
+  return response.task;
+};
 
 export const matchInternships = (
   userId: string,

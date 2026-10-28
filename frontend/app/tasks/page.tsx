@@ -46,6 +46,7 @@ export default function TasksPage() {
   const [title, setTitle] = useState("");
   const [deadline, setDeadline] = useState("");
   const [hours, setHours] = useState(2);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setNow(new Date());
@@ -88,14 +89,18 @@ export default function TasksPage() {
       const saved = await createTask({ user_id: USER_ID, ...draft });
       setTasks([...tasks, saved]);
       setLive(true);
-    } catch {
-      // backend is down: keep it on screen only so the demo never breaks
-      setTasks([...tasks, { id: String(Date.now()), status: "pending", ...draft }]);
-    }
-    setCourse("");
-    setTitle("");
-    setDeadline("");
-    setHours(2);
+      setCourse("");
+      setTitle("");
+      setDeadline("");
+      setHours(2);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save task to the backend."
+  );
+}
+   
   }
 
   function toggle(id: string) {
@@ -115,6 +120,11 @@ export default function TasksPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 pb-24 pt-10 sm:px-8">
       <Aurora />
+      {error && (
+  <p role="alert" className="mt-4 text-sm text-red-300">
+    {error}
+  </p>
+)}
 
       <FadeIn>
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-white/70">

@@ -1,41 +1,51 @@
+
 import os
+from pathlib import Path
 from typing import Optional
+
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import Client, create_client
 
-load_dotenv()
+# Explicitly load backend/.env
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(ENV_FILE, override=True)
 
-SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_SERVICE_KEY")
+)
 
 _supabase: Optional[Client] = None
 
 
 def get_supabase_client() -> Client:
-    """Returns a singleton Supabase client instance."""
+    """Return a singleton Supabase client."""
     global _supabase
-    if _supabase is None:
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError(
-                "Missing SUPABASE_URL or SUPABASE_KEY in environment variables. "
-                "Ensure they are set in your backend/.env file."
-            )
-        _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    if _supabase is not None:
+        return _supabase
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise ValueError(
+            f"Missing SUPABASE_URL or Supabase key. Check {ENV_FILE}"
+        )
+
+    _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _supabase
 
 
 def initialize_database() -> None:
-    """Verifies connectivity to the Supabase PostgreSQL database."""
+    """Check that the Supabase users table is accessible."""
     try:
         client = get_supabase_client()
-        # Verify active connection and table accessibility
         client.table("users").select("id").limit(1).execute()
-        print("Connected to Supabase PostgreSQL database successfully.")
+        print("Connected to Supabase successfully.")
     except Exception as exc:
         print(f"Warning: Supabase connection check failed: {exc}")
 
 
-# Backwards compatibility alias for existing code
 def get_connection() -> Client:
-    """Alias for get_supabase_client to avoid breaking legacy references."""
+    """Backwards-compatible alias."""
     return get_supabase_client()
