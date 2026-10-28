@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import "bootstrap-icons/font/bootstrap-icons.css";
-import { getSchedule, USER_ID, type Block, type BlockType, type WeeklyPlan } from "../../lib/api";
-import { demoPlan } from "../../lib/demoPlan";
+import { getSchedule, generateAgentPlan, emptyPlan, USER_ID, type AgentPlanResult, type Block, type BlockType, type WeeklyPlan } from "../../lib/api";
+import PlanEditor from "../../components/PlanEditor";
+import AgentResults from "../../components/AgentResults";
 import Aurora from "../../components/Aurora";
 import GlowCard from "../../components/GlowCard";
 import CountUp from "../../components/CountUp";
@@ -28,9 +29,12 @@ const hoursOf = (b: Block) => (toMin(b.end) - toMin(b.start)) / 60;
 const fmt = (h: number) => String(Number(h.toFixed(1)));
 
 export default function TimetablePage() {
-  const [plan, setPlan] = useState<WeeklyPlan>(demoPlan);
+  const [plan, setPlan] = useState<WeeklyPlan>(emptyPlan);
   const [live, setLive] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
+  const [agentResult, setAgentResult] = useState<AgentPlanResult | null>(null);
 
   // Read the clock after the page loads (avoids server/browser time mismatch)
   useEffect(() => {
@@ -46,7 +50,7 @@ export default function TimetablePage() {
       .then((d) => {
         if (d && typeof d.weekly_plan === "object" && d.weekly_plan !== null) {
           setPlan(d.weekly_plan);
-          setLive(true);
+          setLive(d.saved === true);
         }
       })
       .catch(() => setLive(false));
@@ -74,6 +78,22 @@ export default function TimetablePage() {
     { label: "Career", value: by("career"), icon: meta.career.icon, color: meta.career.text },
   ];
 
+  async function askAgentToPlan() {
+    if (!USER_ID || generating) return;
+    setGenerating(true);
+    setError("");
+    try {
+      const result = await generateAgentPlan(USER_ID);
+      setPlan(result.weekly_plan);
+      setLive(true);
+      setAgentResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The AI planner could not create a plan.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-8">
       <Aurora />
@@ -85,13 +105,31 @@ export default function TimetablePage() {
             <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${live ? "bg-emerald-400" : "bg-white/40"}`} />
             <span className={`relative inline-flex h-2 w-2 rounded-full ${live ? "bg-emerald-400" : "bg-white/40"}`} />
           </span>
-          {live ? "Agent online · live plan" : "Agent online · demo plan"}
+          {live ? "Your saved plan" : "No saved plan yet"}
         </div>
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
           Your <span className="text-gradient">weekly plan</span>
         </h1>
-        <p className="mt-2 max-w-xl text-white/55">A balanced week of classes, skills and career prep, built by the agent.</p>
+        <p className="mt-2 max-w-xl text-white/55">Add your own blocks or generate a plan from your tasks.</p>
       </FadeIn>
+
+      <PlanEditor plan={plan} userId={USER_ID} onSaved={(savedPlan) => { setPlan(savedPlan); setLive(true); setAgentResult(null); }} />
+
+      <section className="mt-4 rounded-2xl border border-violet-300/20 bg-violet-400/[0.04] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-violet-200">AI study planner</h2>
+            <p className="mt-1 text-sm text-white/50">Prioritizes your pending tasks, explains its recommendations, and saves a weekly plan.</p>
+          </div>
+          <button onClick={askAgentToPlan} disabled={!USER_ID || generating} className="rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:opacity-50">
+            <i className={`bi ${generating ? "bi-arrow-repeat" : "bi-stars"} mr-1`} />
+            {generating ? "AI is planning..." : "Ask AI to plan my week"}
+          </button>
+        </div>
+        {!USER_ID && <p className="mt-3 text-sm text-amber-200">Set NEXT_PUBLIC_DEMO_USER_ID to your student UUID to enable the planner.</p>}
+        {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
+      </section>
+      {agentResult && <AgentResults result={agentResult} />}
 
       {/* Stat cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">

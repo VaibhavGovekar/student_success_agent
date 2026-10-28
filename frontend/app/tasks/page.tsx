@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import "bootstrap-icons/font/bootstrap-icons.css";
-import { getTasks, createTask, USER_ID, type Task, type Status } from "../../lib/api";
+import { getTasks, createTask, updateTaskStatus, USER_ID, type Task, type Status } from "../../lib/api";
 import { demoTasks } from "../../lib/demoPlan";
 import Aurora from "../../components/Aurora";
 import GlowCard from "../../components/GlowCard";
@@ -103,8 +103,17 @@ export default function TasksPage() {
    
   }
 
-  function toggle(id: string) {
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, status: t.status === "completed" ? "pending" : "completed" } : t)));
+  async function toggle(id: string) {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    try {
+      const saved = await updateTaskStatus(id, nextStatus);
+      setTasks((current) => current.map((item) => item.id === id ? saved : item));
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update task status.");
+    }
   }
 
   const input =

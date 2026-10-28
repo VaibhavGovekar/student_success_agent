@@ -6,13 +6,17 @@ import "bootstrap-icons/font/bootstrap-icons.css";
 
 import {
   getSchedule,
+  generateAgentPlan,
+  emptyPlan,
   USER_ID,
   type Block,
   type BlockType,
+  type AgentPlanResult,
   type WeeklyPlan,
 } from "../lib/api";
 
-import { demoPlan } from "../lib/demoPlan";
+import PlanEditor from "../components/PlanEditor";
+import AgentResults from "../components/AgentResults";
 import Aurora from "../components/Aurora";
 import GlowCard from "../components/GlowCard";
 import CountUp from "../components/CountUp";
@@ -109,12 +113,15 @@ function planMoves(list: Item[]) {
 }
 
 export default function TimetablePage() {
-  const [source, setSource] = useState<WeeklyPlan>(demoPlan);
-  const [items, setItems] = useState<Item[]>(() => flatten(demoPlan));
+  const [source, setSource] = useState<WeeklyPlan>(emptyPlan);
+  const [items, setItems] = useState<Item[]>(() => flatten(emptyPlan()));
   const [live, setLive] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [running, setRunning] = useState(false);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [planError, setPlanError] = useState("");
+  const [agentResult, setAgentResult] = useState<AgentPlanResult | null>(null);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -139,7 +146,7 @@ export default function TimetablePage() {
         if (d && typeof d.weekly_plan === "object" && d.weekly_plan !== null) {
           setSource(d.weekly_plan);
           setItems(flatten(d.weekly_plan));
-          setLive(true);
+          setLive(d.saved === true);
         }
       })
       .catch(() => setLive(false));
@@ -185,6 +192,28 @@ export default function TimetablePage() {
     if (running) return;
     setItems(flatten(source));
     setSteps([]);
+  }
+
+  async function createAiPlan() {
+    if (!USER_ID || generatingPlan) return;
+    setGeneratingPlan(true);
+    setPlanError("");
+    try {
+      const response = await generateAgentPlan(USER_ID);
+      setSource(response.weekly_plan);
+      setItems(flatten(response.weekly_plan));
+      setLive(true);
+      setAgentResult(response);
+      setSteps([
+        { icon: "bi-eye", title: "Observe", detail: `Reviewed ${response.recommendations.length} pending tasks from your account.` },
+        { icon: "bi-cpu", title: "Reason", detail: `Prioritized tasks using ${response.recommendation_source === "gemini" ? "Gemini AI" : "the built-in rules fallback"}.` },
+        { icon: "bi-calendar-check", title: "Plan and evaluate", detail: `Created a ${response.schedule_status} weekly plan and saved it to your account.` },
+      ]);
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Could not generate a plan.");
+    } finally {
+      setGeneratingPlan(false);
+    }
   }
 
   async function run() {
@@ -275,13 +304,25 @@ export default function TimetablePage() {
             <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${live ? "bg-emerald-400" : "bg-white/40"}`} />
             <span className={`relative inline-flex h-2 w-2 rounded-full ${live ? "bg-emerald-400" : "bg-white/40"}`} />
           </span>
-          {live ? "Agent online · live plan" : "Agent online · demo plan"}
+          {live ? "Your saved plan" : "No saved plan yet"}
         </div>
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
           Your <span className="text-gradient">weekly plan</span>
         </h1>
-        <p className="mt-2 max-w-xl text-white/55">A balanced week of classes, skills and career prep, built and re-planned by the agent.</p>
+        <p className="mt-2 max-w-xl text-white/55">Set the days and times that work for you, or ask the agent to plan around your tasks.</p>
       </FadeIn>
+
+      <PlanEditor
+        plan={source}
+        userId={USER_ID}
+        onSaved={(savedPlan) => {
+          setSource(savedPlan);
+          setItems(flatten(savedPlan));
+          setLive(true);
+          setAgentResult(null);
+          setSteps([{ icon: "bi-check2-circle", title: "Your plan is saved", detail: "The block is now part of your weekly schedule." }]);
+        }}
+      />
 
       {/* Stat cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -386,6 +427,15 @@ export default function TimetablePage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
+                  onClick={createAiPlan}
+                  disabled={!USER_ID || generatingPlan || running}
+                  title={!USER_ID ? "Set NEXT_PUBLIC_DEMO_USER_ID to enable AI planning" : "Generate and save a plan from your pending tasks"}
+                  className="rounded-xl border border-violet-300/30 px-3 py-2 text-sm text-violet-200 transition hover:bg-violet-400/10 disabled:opacity-40"
+                >
+                  <i className={`bi ${generatingPlan ? "bi-arrow-repeat" : "bi-stars"} mr-1`} />
+                  {generatingPlan ? "AI is planning..." : "Ask AI to plan my week"}
+                </button>
+                <button
                   onClick={simulate}
                   disabled={running}
                   className="rounded-xl border border-white/15 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:opacity-40"
@@ -407,16 +457,19 @@ export default function TimetablePage() {
                   className="rounded-xl bg-linear-to-r from-violet-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 disabled:opacity-60"
                 >
                   <i className={`bi ${running ? "bi-arrow-repeat" : "bi-magic"} mr-1`} />
-                  {running ? "Agent working..." : "Re-plan my week"}
+                  {running ? "Re-planning..." : "Re-plan missed blocks"}
                 </motion.button>
               </div>
             </div>
 
+            {agentResult && <AgentResults result={agentResult} />}
+
             {steps.length === 0 && !running && (
               <div className="mt-4 rounded-xl border border-dashed border-white/10 p-4 text-sm text-white/40">
-                The agent is idle. Observe → Reason → Plan → Act → Evaluate will show up here.
+                Ask the AI planner to prioritize your pending tasks, explain its recommendations, and save a weekly schedule. The missed-block control runs a separate local re-planning simulation.
               </div>
             )}
+            {planError && <p role="alert" className="mt-3 text-sm text-rose-300">{planError}</p>}
 
             <ul className="mt-4 flex flex-col gap-2">
               <AnimatePresence initial={false}>

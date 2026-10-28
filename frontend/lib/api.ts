@@ -56,6 +56,56 @@ export type Block = {
 
 export type WeeklyPlan = Record<string, Block[]>;
 
+export type AgentRecommendation = {
+  task_id?: string;
+  task_title: string;
+  priority: "high" | "medium" | "low";
+  priority_reason: string;
+  recommended_study_hours: number;
+};
+
+export type RankedAgentTask = {
+  id?: string;
+  title: string;
+  due_date: string;
+  duration_hours: number;
+  status: string;
+  priority_score: number;
+  ai_recommendation: AgentRecommendation | null;
+};
+
+export type AgentScheduleBlock = {
+  title: string;
+  scheduled_date: string;
+  start_hour: number;
+  end_hour: number;
+  due_date: string;
+  status: string;
+  recovery_mode?: boolean;
+};
+
+export type AgentPlanResult = {
+  weekly_plan: WeeklyPlan;
+  available_hours_per_day: number;
+  recommendations: AgentRecommendation[];
+  ranked_tasks: RankedAgentTask[];
+  schedule: AgentScheduleBlock[];
+  missed_deadline_warnings: string[];
+  initial_validation_errors: string[];
+  validation_errors: string[];
+  replanning_attempted: boolean;
+  success: boolean;
+  schedule_status: "valid" | "invalid";
+  recovery_schedule: boolean;
+  schedule_type: "regular" | "recovery";
+  recommendation_source: "gemini" | "mock_rules";
+  recommendation_fallback_reason: string | null;
+};
+
+export const emptyPlan = (): WeeklyPlan => ({
+  Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [],
+});
+
 export const getTasks = async (userId: string): Promise<Task[]> => {
   const response = await request<{ tasks: Task[] }>(
     `/tasks/${encodeURIComponent(userId)}`
@@ -96,16 +146,33 @@ export const matchInternships = (
   cgpa: number,
   count = 6
 ) =>
-  request<Match[]>("/match-internships", {
+  request<{ matches: Match[] }>("/internships/match", {
     method: "POST",
     body: JSON.stringify({
       user_id: userId,
       student_cgpa: cgpa,
       match_count: count,
     }),
-  });
+  }).then((response) => response.matches);
 
 export const getSchedule = (userId: string) =>
-  request<{ weekly_plan: WeeklyPlan }>(
+  request<{ weekly_plan: WeeklyPlan; saved?: boolean }>(
     `/schedule/${encodeURIComponent(userId)}`
+  );
+
+export const saveSchedule = (userId: string, weeklyPlan: WeeklyPlan) => {
+  const monday = new Date();
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const weekStartDate = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+  return request<{ schedule: { weekly_plan: WeeklyPlan } }>("/schedule", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, week_start_date: weekStartDate, weekly_plan: weeklyPlan }),
+  });
+};
+
+export const generateAgentPlan = (userId: string) =>
+  request<AgentPlanResult>(
+    `/students/${encodeURIComponent(userId)}/agent/plan`,
+    { method: "POST" }
   );
