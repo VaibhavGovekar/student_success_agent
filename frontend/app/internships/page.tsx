@@ -1,80 +1,101 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { matchInternships, USER_ID, type Match } from "../../lib/api";
-
-const demoMatches: Match[] = [
-  { id: "1", title: "Frontend Developer Intern", company: "PixelWorks", role_description: "Build responsive UI with React and Next.js. Work with designers on new features.", min_cgpa: 7.0, similarity: 0.91 },
-  { id: "2", title: "Python Backend Intern", company: "DataLeaf", role_description: "Build APIs with FastAPI and Postgres. Basic knowledge of SQL needed.", min_cgpa: 7.5, similarity: 0.84 },
-  { id: "3", title: "AI/ML Intern", company: "InsightLabs", role_description: "Work on embeddings and vector search. Python and basic ML required.", min_cgpa: 8.0, similarity: 0.76 },
-  { id: "4", title: "Web Developer Intern", company: "CodeNest", role_description: "Maintain HTML, CSS and JavaScript websites for clients.", min_cgpa: 6.5, similarity: 0.68 },
-  { id: "5", title: "Data Analyst Intern", company: "ServerSide", role_description: "Clean datasets and build dashboards. SQL and Python helpful.", min_cgpa: 7.0, similarity: 0.52 },
-  { id: "6", title: "Cloud Engineering Intern", company: "NimbusTech", role_description: "Assist with deployments on AWS. Linux and networking basics.", min_cgpa: 8.5, similarity: 0.47 },
-];
-
-function levelOf(pct: number) {
-  if (pct >= 80)
-    return {
-      badge: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
-      bar: "from-emerald-400 to-teal-300",
-      dot: "bg-emerald-300",
-    };
-  if (pct >= 60)
-    return {
-      badge: "border-amber-400/20 bg-amber-400/10 text-amber-300",
-      bar: "from-amber-400 to-yellow-300",
-      dot: "bg-amber-300",
-    };
-  return {
-    badge: "border-rose-400/20 bg-rose-400/10 text-rose-300",
-    bar: "from-rose-400 to-pink-300",
-    dot: "bg-rose-300",
-  };
-}
+import {
+  generateInternshipSearchIdeas,
+  getStudentProfile,
+  getStudentSkills,
+  USER_ID,
+  type InternshipSearchIdea,
+} from "../../lib/api";
 
 export default function InternshipsPage() {
-  const [matches, setMatches] = useState<Match[]>(demoMatches);
-  const [live, setLive] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [cgpa, setCgpa] = useState(8.0);
-  const [minMatch, setMinMatch] = useState(0);
+  const [careerGoal, setCareerGoal] = useState("");
+  const [degree, setDegree] = useState("");
+  const [skillsText, setSkillsText] = useState("");
+  const [location, setLocation] = useState("");
   const [search, setSearch] = useState("");
+  const [loadingProfile, setLoadingProfile] = useState(Boolean(USER_ID));
+  const [profileNotice, setProfileNotice] = useState("");
+  const [ideas, setIdeas] = useState<InternshipSearchIdea[]>([]);
+  const [generatingIdeas, setGeneratingIdeas] = useState(false);
+  const [ideaError, setIdeaError] = useState("");
 
-  async function findMatches() {
-    if (!USER_ID) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    setLoading(true);
+    async function loadProfile() {
+      if (!USER_ID) return;
+      try {
+        const [profile, skills] = await Promise.all([
+          getStudentProfile(USER_ID),
+          getStudentSkills(USER_ID),
+        ]);
+        if (cancelled) return;
+        setCareerGoal(profile.career_goal ?? "");
+        setDegree(profile.degree ?? "");
+        setSkillsText(skills.map((skill) => skill.skill_name).filter(Boolean).join(", "));
+      } catch {
+        if (!cancelled) {
+          setProfileNotice("Saved profile could not be loaded. Enter your search details manually.");
+        }
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
+      }
+    }
+
+    void loadProfile();
+    return () => { cancelled = true; };
+  }, []);
+
+  const keywords = ["internship", search.trim(), careerGoal.trim(), skillsText.trim(), degree.trim()]
+    .filter(Boolean)
+    .join(" ");
+  const linkedInSearch = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}${location.trim() ? `&location=${encodeURIComponent(location.trim())}` : ""}`;
+  const linkedinUrlFor = (query: string) =>
+    `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`internship ${query}`)}${location.trim() ? `&location=${encodeURIComponent(location.trim())}` : ""}`;
+
+  function openLinkedInInNewTab(url: string) {
+    const tab = window.open(url, "_blank");
+    if (!tab) {
+      setIdeaError("Your browser blocked the LinkedIn tab. Allow pop-ups for localhost and try again.");
+      return;
+    }
+    tab.opener = null;
+  }
+
+  async function suggestSearches() {
+    if (!careerGoal.trim() && !skillsText.trim() && !search.trim()) {
+      setIdeaError("Add a career goal, at least one skill, or a role/company first.");
+      setIdeas([]);
+      return;
+    }
+
+    setGeneratingIdeas(true);
+    setIdeaError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     try {
-      const data = await matchInternships(USER_ID, cgpa);
-      setMatches(data);
-      setLive(true);
-    } catch {
-      setLive(false);
+      const response = await generateInternshipSearchIdeas({
+        career_goal: careerGoal.trim(),
+        degree: degree.trim(),
+        skills: skillsText.split(",").map((skill) => skill.trim()).filter(Boolean),
+        location: location.trim(),
+        search_terms: search.trim(),
+      }, controller.signal);
+      setIdeas(response.suggestions);
+    } catch (error) {
+      setIdeas([]);
+      setIdeaError(error instanceof DOMException && error.name === "AbortError"
+        ? "AI suggestions took too long. You can still use the LinkedIn search above."
+        : error instanceof Error ? error.message : "Could not generate AI search suggestions.");
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeout);
+      setGeneratingIdeas(false);
     }
   }
 
-  useEffect(() => {
-    findMatches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const shown = matches
-    .filter((m) => m.min_cgpa <= cgpa)
-    .filter((m) => Math.round(m.similarity * 100) >= minMatch)
-    .filter((m) =>
-      `${m.title} ${m.company} ${m.role_description}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
-    .sort((a, b) => b.similarity - a.similarity);
-
-  const highMatches = shown.filter((m) => m.similarity >= 0.8).length;
-
-  const field =
-    "w-full rounded-xl border border-white/[0.09] bg-[#0c0d16] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-violet-400/60 focus:ring-2 focus:ring-violet-400/10";
+  const field = "w-full rounded-xl border border-white/[0.09] bg-[#0c0d16] px-3.5 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-violet-400/60 focus:ring-2 focus:ring-violet-400/10";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090a12] text-white">
@@ -82,288 +103,149 @@ export default function InternshipsPage() {
       <div className="pointer-events-none absolute right-[-160px] top-[360px] h-[360px] w-[360px] rounded-full bg-indigo-500/[0.07] blur-[120px]" />
 
       <div className="relative mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-8 sm:pt-12">
-        {/* Header */}
         <section className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div>
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/[0.07] px-3 py-1.5 text-xs font-medium text-violet-200">
               <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
-              CAREER DISCOVERY
+              LINKEDIN JOB SEARCH
             </div>
-
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Find your next{" "}
               <span className="bg-gradient-to-r from-violet-300 to-indigo-300 bg-clip-text text-transparent">
                 opportunity.
               </span>
             </h1>
-
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/45 sm:text-base">
-              Explore internships ranked by how closely they match your
-              academic eligibility and career interests.
+              Get AI search ideas from your profile, then open LinkedIn Jobs to see live postings and companies.
             </p>
-
-            <span
-              className={`mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-                live
-                  ? "border-emerald-400/20 bg-emerald-400/[0.07] text-emerald-300"
-                  : "border-white/[0.09] bg-white/[0.035] text-white/50"
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  live ? "bg-emerald-300" : "bg-white/35"
-                }`}
-              />
-              {live ? "Live backend data" : "Demo opportunities"}
+            <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-1.5 text-xs text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              {loadingProfile ? "Loading saved profile" : "Ready to search LinkedIn"}
             </span>
           </div>
 
-          <div className="flex items-center gap-3 self-start rounded-2xl border border-white/[0.09] bg-[#11121d]/90 p-4 md:self-auto">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-violet-400/15 bg-violet-400/10 text-xl text-violet-300">
-              <i className="bi bi-stars" />
-            </div>
-            <div>
-              <p className="text-xs text-white/40">Strong matches</p>
-              <p className="mt-1 text-xl font-semibold">{highMatches}</p>
-            </div>
-          </div>
         </section>
 
-        {/* Summary cards */}
-        <section className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            {
-              label: "Matching roles",
-              value: shown.length,
-              icon: "bi-briefcase",
-              color: "text-violet-300",
-              tone: "bg-violet-400/10 border-violet-400/15",
-            },
-            {
-              label: "80%+ compatibility",
-              value: highMatches,
-              icon: "bi-bullseye",
-              color: "text-emerald-300",
-              tone: "bg-emerald-400/10 border-emerald-400/15",
-            },
-            {
-              label: "Your CGPA",
-              value: cgpa.toFixed(1),
-              icon: "bi-mortarboard",
-              color: "text-sky-300",
-              tone: "bg-sky-400/10 border-sky-400/15",
-            },
-            {
-              label: "Minimum match",
-              value: `${minMatch}%`,
-              icon: "bi-sliders",
-              color: "text-amber-300",
-              tone: "bg-amber-400/10 border-amber-400/15",
-            },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="group rounded-2xl border border-white/[0.09] bg-[#11121d]/90 p-5 transition duration-300 hover:-translate-y-1 hover:border-violet-400/25"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-white/45 sm:text-sm">
-                  {item.label}
-                </span>
-                <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${item.tone} ${item.color}`}
-                >
-                  <i className={`bi ${item.icon}`} />
-                </span>
-              </div>
-              <p className="mt-4 text-2xl font-semibold tracking-tight">
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </section>
+        {profileNotice && (
+          <p role="status" className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-3 text-sm text-amber-100/90">
+            {profileNotice}
+          </p>
+        )}
 
-        {/* Search and filters */}
         <section className="mt-8 rounded-2xl border border-white/[0.09] bg-[#11121d]/90 p-5 sm:p-6">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
               <i className="bi bi-funnel" />
             </span>
             <div>
-              <h2 className="text-sm font-semibold">Refine your search</h2>
+              <h2 className="text-sm font-semibold">Personalize your LinkedIn search</h2>
               <p className="mt-1 text-xs text-white/40">
-                Adjust your eligibility and find relevant roles.
+                Add a company name in “Role or company” to look for openings at that employer.
               </p>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_auto] xl:items-end">
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
+            <label className="block min-w-0 xl:col-span-2">
+              <span className="mb-2 block text-xs font-medium text-white/55">Career goal</span>
+              <input className={field} placeholder="e.g. Software Engineering Intern" value={careerGoal} onChange={(event) => setCareerGoal(event.target.value)} />
+            </label>
             <label className="block min-w-0">
-              <span className="mb-2 block text-xs font-medium text-white/55">
-                Search roles
-              </span>
-              <div className="relative">
-                <i className="bi bi-search absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-white/30" />
-                <input
-                  className={`${field} pl-10`}
-                  placeholder="Title, company, or skill..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
+              <span className="mb-2 block text-xs font-medium text-white/55">Degree (optional)</span>
+              <input className={field} placeholder="e.g. Computer Science" value={degree} onChange={(event) => setDegree(event.target.value)} />
             </label>
-
-            <label className="block">
-              <span className="mb-2 block text-xs font-medium text-white/55">
-                Your CGPA (out of 10)
-              </span>
-              <input
-                className={field}
-                type="number"
-                step="0.1"
-                min={0}
-                max={10}
-                value={cgpa}
-                onChange={(e) =>
-                  setCgpa(Math.min(10, Math.max(0, Number(e.target.value))))
-                }
-              />
+            <label className="block min-w-0">
+              <span className="mb-2 block text-xs font-medium text-white/55">Preferred location</span>
+              <input className={field} placeholder="e.g. Bengaluru, India" value={location} onChange={(event) => setLocation(event.target.value)} />
             </label>
-
-            <label className="block">
-              <span className="mb-2 block text-xs font-medium text-white/55">
-                Match threshold
-              </span>
-              <select
-                className={field}
-                value={minMatch}
-                onChange={(e) => setMinMatch(Number(e.target.value))}
-              >
-                <option value={0}>Any match</option>
-                <option value={60}>60% and above</option>
-                <option value={80}>80% and above</option>
-              </select>
+            <label className="block min-w-0 xl:col-span-2">
+              <span className="mb-2 block text-xs font-medium text-white/55">Your skills</span>
+              <input className={field} placeholder="e.g. Python, SQL, React" value={skillsText} onChange={(event) => setSkillsText(event.target.value)} />
             </label>
-
-            <button
-              onClick={findMatches}
-              disabled={loading || !USER_ID}
-              title={!USER_ID ? "Showing demo opportunities" : "Refresh matches"}
-              className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-violet-500 px-5 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+            <label className="block min-w-0 xl:col-span-2">
+              <span className="mb-2 block text-xs font-medium text-white/55">Role or company</span>
+              <input className={field} placeholder="e.g. backend intern or Google" value={search} onChange={(event) => setSearch(event.target.value)} />
+            </label>
+            <a
+              href={linkedInSearch}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                event.preventDefault();
+                openLinkedInInNewTab(linkedInSearch);
+              }}
+              className="inline-flex min-h-12 items-center justify-center gap-2 self-end rounded-xl bg-violet-500 px-5 text-sm font-semibold text-white transition hover:bg-violet-400"
             >
-              <i className={`bi ${loading ? "bi-arrow-repeat" : "bi-stars"}`} />
-              {loading ? "Finding..." : "Refresh matches"}
-            </button>
+              <i className="bi bi-linkedin" />
+              Search internships on LinkedIn
+            </a>
           </div>
         </section>
 
-        {/* Results */}
-        <section className="mt-9">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <section className="mt-8 rounded-2xl border border-violet-400/15 bg-violet-400/[0.04] p-5 sm:p-6">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-300/70">
-                Recommended for you
-              </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">
-                Internship opportunities
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <i className="bi bi-stars text-violet-300" />
+                AI-powered search ideas
               </h2>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-white/45">
+                Gemini suggests role and skill searches from your profile using text generation only. It does not search the web or invent job listings; LinkedIn provides the real companies and openings.
+              </p>
             </div>
-            <p className="text-sm text-white/40">
-              Showing{" "}
-              <span className="font-medium text-white/75">{shown.length}</span>{" "}
-              {shown.length === 1 ? "opportunity" : "opportunities"}
-            </p>
+            <button
+              type="button"
+              onClick={suggestSearches}
+              disabled={generatingIdeas}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-300/25 bg-violet-400/10 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/20 disabled:cursor-wait disabled:opacity-60"
+            >
+              <i className={`bi ${generatingIdeas ? "bi-arrow-repeat" : "bi-stars"}`} />
+              {generatingIdeas ? "Thinking..." : "Suggest searches with AI"}
+            </button>
           </div>
 
-          <div className="mt-5 grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {shown.map((m) => {
-              const pct = Math.round(m.similarity * 100);
-              const lv = levelOf(pct);
+          {ideaError && <p role="alert" className="mt-4 text-sm text-amber-200">{ideaError}</p>}
 
-              return (
-                <article
-                  key={m.id}
-                  className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#11121d]/90 p-5 transition duration-300 hover:-translate-y-1 hover:border-violet-400/30 hover:shadow-[0_16px_45px_rgba(0,0,0,0.2)] sm:p-6"
-                >
-                  <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-violet-500/[0.06] blur-3xl transition group-hover:bg-violet-500/[0.12]" />
-
-                  <div className="relative flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-lg text-violet-300">
-                      <i className="bi bi-building" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="break-words text-base font-semibold leading-6 text-white/90">
-                        {m.title}
-                      </h3>
-                      <p className="mt-1 text-sm text-white/45">{m.company}</p>
-                    </div>
-                  </div>
-
-                  <div className="relative mt-6 rounded-xl border border-white/[0.06] bg-black/15 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs text-white/45">
-                        Compatibility score
-                      </span>
-                      <span
-                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${lv.badge}`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${lv.dot}`} />
-                        {pct}%
-                      </span>
-                    </div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-                      <div
-                        className={`h-full rounded-full bg-gradient-to-r ${lv.bar} transition-all duration-500`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <p className="mt-5 flex-1 text-sm leading-6 text-white/55">
-                    {m.role_description}
-                  </p>
-
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-4">
-                    <span className="inline-flex items-center gap-2 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-xs text-white/50">
-                      <i className="bi bi-mortarboard text-violet-300" />
-                      Min. CGPA {Number(m.min_cgpa).toFixed(1)}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-white/35">
-                      <i className="bi bi-check-circle" />
-                      {cgpa >= m.min_cgpa ? "CGPA eligible" : "CGPA required"}
-                    </span>
-                  </div>
+          {ideas.length > 0 && (
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {ideas.map((idea, index) => (
+                <article key={`${idea.keywords}-${index}`} className="rounded-xl border border-white/[0.08] bg-[#0c0d16]/80 p-4">
+                  <h3 className="text-sm font-semibold text-white/85">{idea.role}</h3>
+                  <p className="mt-2 text-xs leading-5 text-white/45">{idea.reason}</p>
+                  <p className="mt-3 break-words rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-violet-100/75">{idea.keywords}</p>
+                  <a
+                    href={linkedinUrlFor(idea.keywords)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openLinkedInInNewTab(linkedinUrlFor(idea.keywords));
+                    }}
+                    className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-violet-200 hover:text-violet-100"
+                  >
+                    <i className="bi bi-linkedin" />
+                    Search this on LinkedIn
+                  </a>
                 </article>
-              );
-            })}
+              ))}
+            </div>
+          )}
+        </section>
 
-            {shown.length === 0 && (
-              <div className="col-span-full flex flex-col items-center rounded-2xl border border-dashed border-white/[0.12] bg-[#11121d]/50 px-5 py-14 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-xl text-white/35">
-                  <i className="bi bi-search" />
-                </div>
-                <p className="mt-4 text-sm font-medium text-white/75">
-                  No matching opportunities
-                </p>
-                <p className="mt-1 max-w-sm text-xs leading-5 text-white/40">
-                  Try a different search, lower the match threshold, or adjust
-                  your CGPA.
-                </p>
-                <button
-                  onClick={() => {
-                    setSearch("");
-                    setMinMatch(0);
-                  }}
-                  className="mt-4 rounded-lg border border-white/[0.1] px-4 py-2 text-xs font-medium text-violet-200 transition hover:bg-white/[0.05]"
-                >
-                  Clear search filters
-                </button>
-              </div>
-            )}
+        <section className="mt-9 rounded-2xl border border-white/[0.09] bg-[#11121d]/70 p-6 sm:p-8">
+          <div className="flex flex-col items-center text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-xl text-violet-300">
+              <i className="bi bi-linkedin" />
+            </span>
+            <h2 className="mt-4 text-lg font-semibold">Live internship listings and companies</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-white/45">
+              Search opens LinkedIn Jobs in a new tab with your filters. LinkedIn displays the matching companies, posting details, and application links. Sign in to LinkedIn to apply.
+            </p>
           </div>
         </section>
 
         <p className="mt-8 text-center text-xs text-white/25">
-          Student Success Agent · Career discovery workspace
+          Student Success Agent · LinkedIn provides the live job results
         </p>
       </div>
     </main>

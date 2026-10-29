@@ -102,7 +102,7 @@ class FakeSupabase:
 
     def rpc(self, name, params):
         self.rpc_calls.append((name, params))
-        return FakeRPC([{"id": "intern-1", "title": "Backend Intern", "company": "Example Co", "role_description": "Python APIs", "min_cgpa": 7.0, "similarity": 0.82}])
+        return FakeRPC([{"id": "intern-1", "title": "Backend Intern", "company": "Example Co", "role_description": "Python APIs", "min_cgpa": 7.0, "similarity": 0.82, "skills": ["Python", "FastAPI"]}])
 
 
 class FakeRPC:
@@ -168,9 +168,13 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(saved.json()["proficiency_level"], "advanced")
 
     def test_semantic_match_uses_profile_and_rpc(self):
-        response = self.client.post("/internships/match", json={"user_id": self.db.user_id, "student_cgpa": 8.0, "match_count": 5})
+        response = self.client.post("/internships/match", json={"user_id": self.db.user_id, "student_cgpa": 8.0, "career_goal": "Backend engineering", "skills": ["Python", "SQL"], "match_count": 5})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(response.json()["matches"]), 1)
+        match = response.json()["matches"][0]
+        self.assertEqual(match["matched_skills"], ["Python"])
+        self.assertEqual(match["missing_skills"], ["FastAPI"])
+        self.assertTrue(any("CGPA meets" in reason for reason in match["match_reasons"]))
         self.assertEqual(self.db.rpc_calls[0][0], "match_internships")
         self.assertEqual(len(self.db.rpc_calls[0][1]["query_embedding"]), 1536)
 

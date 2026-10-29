@@ -18,8 +18,11 @@ async function request<T>(
   });
 
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`API ${res.status} on ${path}: ${detail}`);
+    const payload = await res.json().catch(() => null);
+    const detail = typeof payload?.detail === "string"
+      ? payload.detail
+      : payload ? JSON.stringify(payload) : `Request failed (${res.status})`;
+    throw new Error(detail);
   }
 
   return res.json();
@@ -41,9 +44,53 @@ export type Match = {
   title: string;
   company: string;
   role_description: string;
-  min_cgpa: number;
-  similarity: number;
+  min_cgpa: number | null;
+  similarity?: number | null;
+  skill_match_percent?: number | null;
+  location?: string;
+  mode?: string;
+  posted_date?: string | null;
+  source_url?: string | null;
+  source_title?: string | null;
+  application_url?: string | null;
+  skills?: string[];
+  matched_skills?: string[];
+  missing_skills?: string[];
+  match_reasons?: string[];
 };
+
+export type InternshipSearchIdeaInput = {
+  career_goal: string;
+  degree: string;
+  skills: string[];
+  location: string;
+  search_terms: string;
+};
+
+export type InternshipSearchIdea = {
+  role: string;
+  keywords: string;
+  reason: string;
+};
+
+export type StudentProfile = {
+  id: string;
+  degree?: string | null;
+  career_goal?: string | null;
+  cgpa?: number | null;
+  current_cgpa?: number | null;
+};
+
+export type StudentSkill = {
+  skill_name: string;
+  proficiency?: number | string;
+};
+
+export const getStudentProfile = (userId: string) =>
+  request<StudentProfile>(`/students/${encodeURIComponent(userId)}`);
+
+export const getStudentSkills = (userId: string) =>
+  request<StudentSkill[]>(`/students/${encodeURIComponent(userId)}/skills`);
 
 export type BlockType = "academic" | "skill" | "career" | "break";
 
@@ -144,7 +191,8 @@ export const updateTaskStatus = async (
 export const matchInternships = (
   userId: string,
   cgpa: number,
-  count = 6
+  count = 6,
+  profile?: { career_goal?: string; skills?: string[] }
 ) =>
   request<{ matches: Match[] }>("/internships/match", {
     method: "POST",
@@ -152,8 +200,17 @@ export const matchInternships = (
       user_id: userId,
       student_cgpa: cgpa,
       match_count: count,
+      career_goal: profile?.career_goal,
+      skills: profile?.skills,
     }),
   }).then((response) => response.matches);
+
+export const generateInternshipSearchIdeas = (input: InternshipSearchIdeaInput, signal?: AbortSignal) =>
+  request<{ suggestions: InternshipSearchIdea[]; source: string }>("/internships/search-ideas", {
+    method: "POST",
+    body: JSON.stringify(input),
+    signal,
+  });
 
 export const getSchedule = (userId: string) =>
   request<{ weekly_plan: WeeklyPlan; saved?: boolean }>(

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.database import get_supabase_client
 from app.embeddings import embed_text
+from app.internship_search_assistant import generate_linkedin_search_ideas
 # Import the existing Agentic AI workflow.
 AGENTIC_AI_DIR = Path(__file__).resolve().parents[2] / "sbs-agentic_ai"
 
@@ -71,8 +72,17 @@ class SkillCreate(BaseModel):
 class MatchInternshipsRequest(BaseModel):
     user_id: Optional[str] = None
     query_embedding: Optional[List[float]] = Field(None, description="1536-dimensional embedding vector")
-    student_cgpa: Optional[float] = None
+    student_cgpa: Optional[float] = Field(None, ge=0, le=10)
+    career_goal: Optional[str] = Field(None, max_length=300)
+    skills: Optional[List[str]] = Field(None, max_length=50)
     match_count: Optional[int] = 5
+
+class InternshipSearchIdeasRequest(BaseModel):
+    career_goal: str = Field(default="", max_length=200)
+    degree: str = Field(default="", max_length=120)
+    skills: List[str] = Field(default_factory=list, max_length=20)
+    location: str = Field(default="", max_length=120)
+    search_terms: str = Field(default="", max_length=160)
 
 class ScheduleCreateRequest(BaseModel):
     user_id: str
@@ -481,6 +491,33 @@ def create_internship(internship: InternshipCreate):
 
 # -------------------- VECTOR MATCH ROUTE (PGVECTOR) --------------------
 
+@app.post("/internships/search-ideas")
+def create_internship_search_ideas(request: InternshipSearchIdeasRequest):
+    if not request.career_goal.strip() and not request.skills and not request.search_terms.strip():
+        raise HTTPException(status_code=422, detail="Enter a career goal, skill, or role/company")
+    try:
+        suggestions = generate_linkedin_search_ideas(
+            career_goal=request.career_goal,
+            degree=request.degree,
+            skills=request.skills,
+            location=request.location,
+            search_terms=request.search_terms,
+        )
+        return {"suggestions": suggestions, "source": "gemini_text_only"}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("AI LinkedIn search suggestion generation failed")
+        if str(getattr(exc, "code", "")) == "429" or type(exc).__name__ == "RateLimitError":
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini text-generation quota reached. Try again after the limit resets, or use LinkedIn search directly.",
+            ) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini text request failed ({type(exc).__name__}). Check the backend log for details.",
+        ) from exc
+
 
 @app.post("/internships/match")
 def match_internships(match_req: MatchInternshipsRequest):
@@ -489,6 +526,7 @@ def match_internships(match_req: MatchInternshipsRequest):
     try:
         query_embedding = match_req.query_embedding
         student_cgpa = match_req.student_cgpa
+        profile_skill_names: List[str] = []
 
         if query_embedding is None:
             if not match_req.user_id:
@@ -514,12 +552,27 @@ def match_internships(match_req: MatchInternshipsRequest):
                 legacy_skills = (supabase.table("student_skills")
                                  .select("skill_name, proficiency_level")
                                  .eq("user_id", match_req.user_id).execute()).data or []
-                skill_context = ", ".join(
-                    f"{skill['skill_name']} ({skill.get('proficiency_level', 'unknown')})"
+                skills = [
+                    {"skill_name": skill["skill_name"], "proficiency": skill.get("proficiency_level", "unknown")}
                     for skill in legacy_skills
+                ]
+            saved_skills = skills
+            requested_skills = [name.strip() for name in (match_req.skills or []) if name.strip()]
+            profile_skill_names = requested_skills or [
+                str(skill.get("skill_name", "")).strip()
+                for skill in saved_skills
+                if str(skill.get("skill_name", "")).strip()
+            ]
+            if requested_skills:
+                skill_context = ", ".join(requested_skills)
+            else:
+                skill_context = ", ".join(
+                    f"{skill['skill_name']} (proficiency {skill.get('proficiency', 0)})"
+                    for skill in saved_skills
                 )
+            career_goal = (match_req.career_goal or "").strip() or student.get("career_goal")
             query_text = " ".join(filter(None, [
-                student.get("career_goal"),
+                career_goal,
                 student.get("degree"),
                 f"Technical skills: {skill_context}" if skill_context else None,
                 f"Student seeking internships with CGPA {student_cgpa}",
@@ -553,7 +606,24 @@ def match_internships(match_req: MatchInternshipsRequest):
                 "match_count": match_req.match_count or 5,
             },
         ).execute()
-        return {"matches": response.data or []}
+        matches = response.data or []
+        if match_req.user_id:
+            skill_lookup = {name.casefold(): name for name in profile_skill_names}
+        else:
+            skill_lookup = {name.casefold(): name for name in (match_req.skills or []) if name.strip()}
+        for match in matches:
+            internship_skills = [str(skill).strip() for skill in (match.get("skills") or []) if str(skill).strip()]
+            matched_skills = [skill for skill in internship_skills if skill.casefold() in skill_lookup]
+            missing_skills = [skill for skill in internship_skills if skill.casefold() not in skill_lookup]
+            match["matched_skills"] = matched_skills
+            match["missing_skills"] = missing_skills
+            match["match_reasons"] = [
+                "Your CGPA meets this internship's minimum requirement.",
+                *([f"Matching skills: {', '.join(matched_skills)}."] if matched_skills else []),
+                *([f"Skills to build: {', '.join(missing_skills)}."] if missing_skills else []),
+                "Ranked by profile-text similarity; the score is not a probability.",
+            ]
+        return {"matches": matches}
 
     except HTTPException:
         raise

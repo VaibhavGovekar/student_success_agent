@@ -22,25 +22,34 @@
 
   <main class="content">
     <h1>InternshipHunter 🔎</h1>
-    <p class="muted">Internships matched to your skills by the agent.</p>
+    <p class="muted">Search LinkedIn Jobs using your role, skills, and location. LinkedIn shows current postings and their companies.</p>
 
-    <div class="filters">
-      <input type="text" id="search" placeholder="Search role or company...">
-      <select id="mode">
-        <option value="All">All types</option>
-        <option value="Remote">Remote</option>
-        <option value="On-site">On-site</option>
-      </select>
-      <select id="minMatch">
-        <option value="0">Any match</option>
-        <option value="50">50%+ match</option>
-        <option value="75">75%+ match</option>
-      </select>
-      <label class="check"><input type="checkbox" id="savedOnly"> Saved only</label>
+    <div class="filters profile-filters" aria-label="Profile used to find internships">
+      <label>Student profile
+        <select id="studentProfile"></select>
+      </label>
+      <label>Degree
+        <input type="text" id="profileDegree" placeholder="e.g. Computer Science">
+      </label>
+      <label>Career goal for this search
+        <input type="text" id="careerGoal" placeholder="e.g. frontend engineering">
+      </label>
+      <label>Skills for this search (comma-separated)
+        <input type="text" id="profileSkills" placeholder="e.g. React, Python, SQL">
+      </label>
+      <label>Preferred location
+        <input type="text" id="profileLocation" placeholder="e.g. Bengaluru or Remote">
+      </label>
+      <label>Role or company
+        <input type="text" id="search" placeholder="e.g. backend intern or Google">
+      </label>
+      <a class="btn" id="quickLinkedInSearch" target="_blank" rel="noopener noreferrer">Search internships on LinkedIn</a>
     </div>
 
-    <p class="muted" id="count"></p>
-    <section class="intern-grid" id="internships"></section>
+    <p class="muted" id="sourceStatus" role="status">Ready to search current listings on LinkedIn.</p>
+    <section class="intern-grid" id="internships">
+      <p class="muted">LinkedIn will show matching jobs, company names, posting details, and application links.</p>
+    </section>
   </main>
 
   <script src="js/internships.js"></script>

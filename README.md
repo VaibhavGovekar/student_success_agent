@@ -5,7 +5,7 @@ Student Success Agent uses a vanilla JavaScript portal (`vini-frontend`), FastAP
 ## Connect the integrations
 
 1. Create a Supabase project. In its SQL Editor, run [`database/schema.sql`](database/schema.sql). The backend uses the `users`, `academic_tasks`, `skills`, `internships`, and `agent_schedules` tables.
-2. Copy `backend/.env.example` to `backend/.env` and fill in `SUPABASE_URL`, `SUPABASE_KEY`, and `GEMINI_API_KEY`. Gemini is used for agent recommendations and 1536-dimensional internship embeddings. Keep both provider keys on the backend; never put them in frontend JavaScript or a `NEXT_PUBLIC_*` variable. `DATABASE_URL` is not used by this Supabase client.
+2. Copy `backend/.env.example` to `backend/.env` and fill in `SUPABASE_URL`, `SUPABASE_KEY`, and `GEMINI_API_KEY`. Gemini is used for agent recommendations and internship embeddings. Internship pages use LinkedIn Jobs search links and do not require Gemini Search grounding. Keep provider keys on the backend; never put them in frontend JavaScript or a `NEXT_PUBLIC_*` variable. `DATABASE_URL` is not used by this Supabase client.
 3. Create a student profile through `POST /students` in Swagger. The vanilla portal reads the first student returned by `GET /students`; add a career goal or skills before requesting semantic internship matches.
 4. Create a student record using `POST http://127.0.0.1:8000/students`, or insert one in Supabase, and use its returned `id` as `NEXT_PUBLIC_DEMO_USER_ID`.
 5. Start the API in one terminal:
@@ -39,4 +39,5 @@ Student Success Agent uses a vanilla JavaScript portal (`vini-frontend`), FastAP
 - The frontend calls FastAPI; it does not connect directly to Supabase. This keeps the Supabase service-role key server-side.
 - `database/schema.sql` is safe to run on a new project and adds missing columns for existing tables, but review any custom production schema before applying migrations.
 - `sbs-agentic_ai/` contains the planner and Gemini recommendation integration. `POST /students/{user_id}/agent/plan` generates a plan from pending tasks and saves it; `GET /schedule/{user_id}` returns the latest saved plan.
-- `POST /internships/match` accepts a student ID and CGPA, creates a Gemini profile embedding, indexes legacy internship rows, and calls the Supabase `match_internships` pgvector RPC.
+- The Next.js and vanilla internship pages build a LinkedIn Jobs search from the student's role/company, skills, degree, and location. The Next.js page also calls `POST /internships/search-ideas` for Gemini text-only role and keyword suggestions; this call does not use Google Search grounding. LinkedIn displays current postings, company names, and application options; this app does not fabricate internship cards.
+- `POST /internships/match` remains available for semantic matching against internship rows stored in Supabase. It creates Gemini embeddings and calls the Supabase `match_internships` pgvector RPC; it cannot discover listings that are not already in the database.

@@ -146,6 +146,15 @@ body {
   padding: 10px 14px; border-radius: 10px; font-family: inherit; font-size: 14px;
 }
 .filters input[type="text"] { flex: 1; min-width: 200px; }
+.profile-filters label { display: flex; flex: 1 1 220px; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+.profile-filters input[type="number"] {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  padding: 10px 14px; border-radius: 10px; font-family: inherit; font-size: 14px;
+}
+.profile-filters select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  padding: 10px 14px; border-radius: 10px; font-family: inherit; font-size: 14px;
+}
 .filters input:focus, .filters select:focus { outline: none; border-color: var(--primary); }
 .check { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
 
@@ -155,6 +164,10 @@ body {
   padding: 20px; display: flex; flex-direction: column; gap: 12px;
 }
 .intern-card:hover { border-color: var(--primary); }
+.match-reasons { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: rgba(0,0,0,.12); }
+.match-reasons strong { font-size: 13px; }
+.match-reasons p { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.match-reasons small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .intern-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .intern-head h4 { font-size: 16px; }
 .intern-head .company { color: var(--muted); font-size: 13px; margin-top: 2px; }
@@ -162,6 +175,7 @@ body {
 .match.high { background: rgba(52,211,153,.15); color: var(--success); }
 .match.mid  { background: rgba(251,191,36,.15);  color: var(--warning); }
 .match.low  { background: rgba(248,113,113,.15); color: var(--danger); }
+.match.unknown { background: rgba(148,163,184,.14); color: var(--muted); }
 .meta { color: var(--muted); font-size: 13px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--border); color: var(--muted); }
