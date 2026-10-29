@@ -12,11 +12,11 @@ export const metadata: Metadata = {
   description: "Tasks, internships and weekly planning in one place",
   icons: {
     icon: [
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon.ico" },
+      { url: "/favicon-32x32.png?v=2", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png?v=2", sizes: "16x16", type: "image/png" },
+      { url: "/favicon.ico?v=2" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: "/apple-touch-icon.png?v=2",
   },
   manifest: "/site.webmanifest",
 };
