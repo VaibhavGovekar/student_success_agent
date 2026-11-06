@@ -11,6 +11,7 @@ from pathlib import Path
 from app.database import get_supabase_client
 from app.embeddings import embed_text
 from app.internship_search_assistant import generate_linkedin_search_ideas
+
 # Import the existing Agentic AI workflow.
 AGENTIC_AI_DIR = Path(__file__).resolve().parents[2] / "sbs-agentic_ai"
 
@@ -29,10 +30,11 @@ app = FastAPI(
 # -------------------- CORS MIDDLEWARE --------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust with specific origins if needed in production
+    allow_origins=["*"],  # Allows all origins including your Vercel deployment
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -102,8 +104,10 @@ class InternshipCreate(BaseModel):
 # -------------------- HEALTH CHECK --------------------
 
 @app.get("/health")
+@app.get("/health/")
 def health_check():
     return {"status": "healthy"}
+
 
 # -------------------- AGENTIC AI PLANNER --------------------
 
@@ -111,6 +115,7 @@ DEFAULT_AVAILABLE_HOURS = 3
 
 
 @app.post("/students/{user_id}/agent/plan")
+@app.post("/students/{user_id}/agent/plan/")
 def create_student_agent_plan(user_id: str):
     """Build and validate a study plan from the student's Supabase tasks."""
 
@@ -224,6 +229,7 @@ def create_student_agent_plan(user_id: str):
 # -------------------- STUDENT ROUTES --------------------
 
 @app.post("/students", status_code=status.HTTP_201_CREATED)
+@app.post("/students/", status_code=status.HTTP_201_CREATED)
 def create_student(student: StudentCreate):
     supabase = get_supabase_client()
     try:
@@ -245,6 +251,7 @@ def create_student(student: StudentCreate):
 
 
 @app.get("/students")
+@app.get("/students/")
 def get_students():
     supabase = get_supabase_client()
     try:
@@ -254,7 +261,11 @@ def get_students():
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# Direct UUID alias allows endpoints called like /a1b2c3d4-e5f6... as well as /students/...
+@app.get("/{student_id}")
+@app.get("/{student_id}/")
 @app.get("/students/{student_id}")
+@app.get("/students/{student_id}/")
 def get_student(student_id: str):
     supabase = get_supabase_client()
     try:
@@ -269,6 +280,7 @@ def get_student(student_id: str):
 # -------------------- TASK ROUTES --------------------
 
 @app.post("/tasks", status_code=status.HTTP_201_CREATED)
+@app.post("/tasks/", status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreateRequest):
     supabase = get_supabase_client()
     try:
@@ -290,6 +302,7 @@ def create_task(task: TaskCreateRequest):
 
 
 @app.get("/tasks/{user_id}")
+@app.get("/tasks/{user_id}/")
 def get_student_tasks(
     user_id: str,
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -311,6 +324,7 @@ def get_student_tasks(
 
 
 @app.patch("/tasks/{task_id}/status")
+@app.patch("/tasks/{task_id}/status/")
 def update_task_status(task_id: str, status_payload: TaskStatusUpdate):
     supabase = get_supabase_client()
     try:
@@ -328,6 +342,7 @@ def update_task_status(task_id: str, status_payload: TaskStatusUpdate):
 
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/tasks/{task_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: str):
     supabase = get_supabase_client()
     try:
@@ -357,6 +372,7 @@ def upsert_schedule(supabase, user_id: str, week_start_date: str, weekly_plan: D
 
 
 @app.post("/schedule", status_code=status.HTTP_201_CREATED)
+@app.post("/schedule/", status_code=status.HTTP_201_CREATED)
 def save_schedule(schedule: ScheduleCreateRequest):
     supabase = get_supabase_client()
     try:
@@ -372,6 +388,7 @@ def save_schedule(schedule: ScheduleCreateRequest):
 
 
 @app.get("/schedule/{user_id}")
+@app.get("/schedule/{user_id}/")
 def get_schedule(user_id: str):
     try:
         client = get_supabase_client()
@@ -400,6 +417,7 @@ def get_schedule(user_id: str):
 # -------------------- SKILL ROUTES --------------------
 
 @app.get("/students/{user_id}/skills")
+@app.get("/students/{user_id}/skills/")
 def get_student_skills(user_id: str):
     supabase = get_supabase_client()
     try:
@@ -421,10 +439,10 @@ def get_student_skills(user_id: str):
 
 
 @app.post("/students/{user_id}/skills")
+@app.post("/students/{user_id}/skills/")
 def save_student_skill(user_id: str, skill_data: SkillCreate):
     supabase = get_supabase_client()
     try:
-        # Upsert skill for user
         payload = {
             "user_id": user_id,
             "skill_name": skill_data.skill_name.strip(),
@@ -457,6 +475,7 @@ def save_student_skill(user_id: str, skill_data: SkillCreate):
 # -------------------- INTERNSHIP ROUTES --------------------
 
 @app.get("/internships")
+@app.get("/internships/")
 def get_internships(limit: int = Query(default=20, ge=1, le=100)):
     supabase = get_supabase_client()
     try:
@@ -467,6 +486,7 @@ def get_internships(limit: int = Query(default=20, ge=1, le=100)):
 
 
 @app.post("/internships", status_code=status.HTTP_201_CREATED)
+@app.post("/internships/", status_code=status.HTTP_201_CREATED)
 def create_internship(internship: InternshipCreate):
     supabase = get_supabase_client()
     try:
@@ -492,6 +512,7 @@ def create_internship(internship: InternshipCreate):
 # -------------------- VECTOR MATCH ROUTE (PGVECTOR) --------------------
 
 @app.post("/internships/search-ideas")
+@app.post("/internships/search-ideas/")
 def create_internship_search_ideas(request: InternshipSearchIdeasRequest):
     if not request.career_goal.strip() and not request.skills and not request.search_terms.strip():
         raise HTTPException(status_code=422, detail="Enter a career goal, skill, or role/company")
@@ -520,6 +541,7 @@ def create_internship_search_ideas(request: InternshipSearchIdeasRequest):
 
 
 @app.post("/internships/match")
+@app.post("/internships/match/")
 def match_internships(match_req: MatchInternshipsRequest):
     supabase = get_supabase_client()
 
@@ -548,7 +570,6 @@ def match_internships(match_req: MatchInternshipsRequest):
                     for skill in skills
                 )
             except Exception:
-                # Support the original README schema, which used student_skills.
                 legacy_skills = (supabase.table("student_skills")
                                  .select("skill_name, proficiency_level")
                                  .eq("user_id", match_req.user_id).execute()).data or []
@@ -582,7 +603,6 @@ def match_internships(match_req: MatchInternshipsRequest):
             except RuntimeError as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-            # Backfill old internship rows that were created before vector indexing was enabled.
             listings = (supabase.table("internships").select("*")
                         .lte("min_cgpa", student_cgpa).limit(200).execute()).data or []
             for listing in listings:
