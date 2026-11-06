@@ -1,6 +1,5 @@
-
-const BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const rawBase = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const BASE = rawBase.replace(/\/+$/, "");
 
 export const USER_ID =
   process.env.NEXT_PUBLIC_DEMO_USER_ID || "";
@@ -9,7 +8,10 @@ async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const targetUrl = `${BASE}${cleanPath}`;
+
+  const res = await fetch(targetUrl, {
     ...options,
     headers: {
       "Content-Type": "application/json",
