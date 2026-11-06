@@ -1,23 +1,30 @@
-
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-# Explicitly load backend/.env
+# Explicitly load backend/.env if present
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(ENV_FILE, override=False)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_KEY")
-    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    or os.getenv("SUPABASE_SERVICE_KEY")
-)
-
 _supabase: Optional[Client] = None
+
+
+def clean_env_var(val: Optional[str]) -> str:
+    """Sanitize URL or Key from accidental quotes, markdown links, or spaces."""
+    if not val:
+        return ""
+    s = val.strip().strip("'\"")
+    # If pasted as a markdown link like [url](url), extract the target URL
+    md_match = re.search(r"\((https?://[^\s)]+)\)", s)
+    if md_match:
+        return md_match.group(1).strip()
+    # Strip any brackets
+    s = s.strip("[]")
+    return s.strip()
 
 
 def get_supabase_client() -> Client:
@@ -27,12 +34,26 @@ def get_supabase_client() -> Client:
     if _supabase is not None:
         return _supabase
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    raw_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    raw_key = (
+        os.getenv("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SERVICE_KEY")
+    )
+
+    supabase_url = clean_env_var(raw_url)
+    supabase_key = clean_env_var(raw_key)
+
+    if not supabase_url or not supabase_key:
         raise ValueError(
-            f"Missing SUPABASE_URL or Supabase key. Check {ENV_FILE}"
+            f"Missing SUPABASE_URL or Supabase key. Checked env and {ENV_FILE}"
         )
 
-    _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Ensure URL protocol is strictly present
+    if not supabase_url.startswith("http://") and not supabase_url.startswith("https://"):
+        supabase_url = f"https://{supabase_url}"
+
+    _supabase = create_client(supabase_url, supabase_key)
     return _supabase
 
 
